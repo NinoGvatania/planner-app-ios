@@ -1,0 +1,33 @@
+name: Приложение
+
+on:
+  push:
+    paths:
+      - "App/**"
+      - "PlannerCore/**"
+      - ".github/workflows/app.yml"
+  pull_request:
+    paths:
+      - "App/**"
+      - "PlannerCore/**"
+      - ".github/workflows/app.yml"
+
+jobs:
+  build:
+    name: Сборка для симулятора (macOS, Xcode 26)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версия Xcode
+        run: xcodebuild -version
+      - name: Сборка
+        run: >
+          xcodebuild -quiet
+          -project App/Planner.xcodeproj
+          -scheme Planner
+          -configuration Debug
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath build/DerivedData
+          CODE_SIGNING_ALLOWED=NO
+          build
