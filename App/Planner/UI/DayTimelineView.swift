@@ -232,7 +232,7 @@ struct DayTimelineView: View {
     }
 
     private func allDayChip(_ task: PlannerTask, phantom: Bool) -> some View {
-        let style = task.quadrant.style
+        let style = task.style
         return HStack(spacing: 2) {
             if !narrowColumns {
                 Button { onToggle(task) } label: {

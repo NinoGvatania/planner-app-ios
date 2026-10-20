@@ -41,7 +41,7 @@ struct TaskBlockView: View {
     }
 
     var body: some View {
-        let style = task.quadrant.style
+        let style = task.style
         HStack(alignment: tall ? .top : .center, spacing: 3) {
             if narrow {
                 Text(task.title)

@@ -325,7 +325,7 @@ struct PlannerScreen: View {
         case .backlog:
             return "В бэклог"
         case .quadrant(let raw):
-            return Quadrant(rawValue: raw)?.name ?? ""
+            return Quadrant(rawValue: raw)?.name ?? "Не разобрано"
         case nil:
             return "Тащи на нужное время"
         }
@@ -377,16 +377,16 @@ struct PlannerScreen: View {
             task.day = DayMath.day(offset: offset)
             showToast("«\(task.title)» — " + whenText(task))
         case .quadrant(let raw):
-            guard let quadrant = Quadrant(rawValue: raw), quadrant != task.quadrant else { return }
-            task.quadrant = quadrant
-            showToast("«\(task.title)» → " + quadrant.name.lowercased())
+            guard raw != task.quadrantRaw else { return }
+            task.quadrantRaw = raw
+            showToast("«\(task.title)» → " + (Quadrant(rawValue: raw)?.name.lowercased() ?? "не разобрано"))
         }
         NotificationScheduler.sync(tasks)
     }
 
     private func dropTarget(at point: CGPoint, duration: Int, grab: CGFloat) -> DropTarget? {
         if let drawer = zones["drawer"], drawer.contains(point) { return .backlog }
-        for raw in 1...4 {
+        for raw in 0...4 {
             if let cell = zones["quad-\(raw)"], cell.contains(point) { return .quadrant(raw) }
         }
         for (key, rect) in zones where key.hasPrefix("tab-") && rect.contains(point) {
@@ -535,7 +535,7 @@ struct PlannerScreen: View {
             dayOffset = offset
         }
         if parsed.start != nil { selectedID = task.id }
-        let quadrantNote = parsed.quadrant == .other ? "" : " · " + parsed.quadrant.name.lowercased()
+        let quadrantNote = parsed.quadrant.map { " · " + $0.name.lowercased() } ?? ""
         showToast("«\(parsed.title)» — \(whenText(task))\(quadrantNote)")
         NotificationScheduler.sync(tasks + [task])
     }

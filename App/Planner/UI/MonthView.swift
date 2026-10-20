@@ -120,7 +120,7 @@ struct MonthView: View {
     }
 
     private func chip(_ task: PlannerTask) -> some View {
-        let style = task.quadrant.style
+        let style = task.style
         return Text(task.title)
             .font(.system(size: 11, weight: .medium))
             .lineLimit(1)

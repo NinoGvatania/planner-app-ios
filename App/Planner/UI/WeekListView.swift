@@ -64,7 +64,7 @@ struct WeekListView: View {
     }
 
     private func row(_ task: PlannerTask) -> some View {
-        let style = task.quadrant.style
+        let style = task.style
         return HStack(spacing: 2) {
             Text(task.start.map { ClockGrid.format(minutes: $0) } ?? "весь день")
                 .font(.system(size: 13))

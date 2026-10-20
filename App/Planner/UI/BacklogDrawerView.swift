@@ -156,7 +156,7 @@ struct BacklogDrawerView: View {
     }
 
     private func row(_ task: PlannerTask) -> some View {
-        let style = task.quadrant.style
+        let style = task.style
         return HStack(spacing: 4) {
             Button { onToggle(task) } label: {
                 Circle()

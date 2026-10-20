@@ -10,11 +10,12 @@ public struct ParsedTask: Equatable, Sendable {
     public var start: Int?
     /// Длительность в минутах.
     public var duration: Int
-    public var quadrant: Quadrant
+    /// Квадрант, если пользователь его назвал; `nil` — задача не разобрана (серая).
+    public var quadrant: Quadrant?
     /// Проект из `#метки`.
     public var project: String?
 
-    public init(title: String, dayOffset: Int?, start: Int?, duration: Int = 30, quadrant: Quadrant = .other, project: String? = nil) {
+    public init(title: String, dayOffset: Int?, start: Int?, duration: Int = 30, quadrant: Quadrant? = nil, project: String? = nil) {
         self.title = title
         self.dayOffset = dayOffset
         self.start = start

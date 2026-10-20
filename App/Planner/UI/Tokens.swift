@@ -53,7 +53,17 @@ extension Quadrant {
         case .urgent:
             return QuadrantStyle(dot: Color(hex: 0x5E9EFF), background: Color(hex: 0x18263D), border: Color(hex: 0x284270), text: Color(hex: 0xDDE9FF))
         case .other:
-            return QuadrantStyle(dot: Color(hex: 0x8C8C96), background: Color(hex: 0x232429), border: Color(hex: 0x3A3B42), text: Color(hex: 0xE6E6EB))
+            return QuadrantStyle(dot: Color(hex: 0x5CCB6E), background: Color(hex: 0x162B1C), border: Color(hex: 0x27502F), text: Color(hex: 0xD6F5DC))
         }
     }
+}
+
+extension QuadrantStyle {
+    /// Неразобранная задача: квадрант ещё не выбран.
+    static let unsorted = QuadrantStyle(dot: Color(hex: 0x8C8C96), background: Color(hex: 0x232429), border: Color(hex: 0x3A3B42), text: Color(hex: 0xE6E6EB))
+}
+
+extension PlannerTask {
+    /// Цвет задачи: серый, пока квадрант не выбран, иначе цвет квадранта.
+    var style: QuadrantStyle { sortedQuadrant?.style ?? .unsorted }
 }

@@ -19,7 +19,7 @@ final class QuickAddParserTests: XCTestCase {
         day: Int?,
         start: Int?,
         duration: Int = 30,
-        quadrant: Quadrant = .other,
+        quadrant: Quadrant? = nil,
         project: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line

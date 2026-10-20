@@ -65,6 +65,11 @@ struct TaskEditSheet: View {
                 }
                 Section("Квадрант") {
                     Picker("Квадрант", selection: $task.quadrantRaw) {
+                        HStack(spacing: 8) {
+                            Circle().fill(QuadrantStyle.unsorted.dot).frame(width: 10, height: 10)
+                            Text("Не разобрано")
+                        }
+                        .tag(0)
                         ForEach(Quadrant.allCases, id: \.rawValue) { quadrant in
                             HStack(spacing: 8) {
                                 Circle().fill(quadrant.style.dot).frame(width: 10, height: 10)

@@ -13,7 +13,7 @@ final class PlannerTask {
     var start: Int?
     /// Длительность в минутах, шаг 15.
     var duration: Int
-    /// Квадрант Эйзенхауэра, см. `Quadrant`.
+    /// Квадрант Эйзенхауэра, см. `Quadrant`; 0 — не разобрана (серая).
     var quadrantRaw: Int
     var isDone: Bool
     /// Ежедневная рутина: никогда не считается просроченной.
@@ -29,7 +29,7 @@ final class PlannerTask {
         day: Date?,
         start: Int?,
         duration: Int = 30,
-        quadrant: Quadrant = .other,
+        quadrant: Quadrant? = nil,
         isDone: Bool = false,
         isRoutine: Bool = false,
         project: Project? = nil,
@@ -40,7 +40,7 @@ final class PlannerTask {
         self.day = day
         self.start = start
         self.duration = duration
-        self.quadrantRaw = quadrant.rawValue
+        self.quadrantRaw = quadrant?.rawValue ?? 0
         self.isDone = isDone
         self.isRoutine = isRoutine
         self.project = project
@@ -49,10 +49,15 @@ final class PlannerTask {
         self.completedAt = isDone ? Date() : nil
     }
 
+    /// Квадрант для раскладки и сортировки; неразобранная задача считается «не важно, не срочно».
     var quadrant: Quadrant {
         get { Quadrant(rawValue: quadrantRaw) ?? .other }
         set { quadrantRaw = newValue.rawValue }
     }
+
+    /// Квадрант, если задача разобрана.
+    var sortedQuadrant: Quadrant? { Quadrant(rawValue: quadrantRaw) }
+    var isSorted: Bool { sortedQuadrant != nil }
 
     var isInBacklog: Bool { day == nil }
 

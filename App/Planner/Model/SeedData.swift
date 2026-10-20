@@ -21,7 +21,7 @@ enum SeedData {
 
         var rank = 0
         func task(
-            _ title: String, day dayOffset: Int?, start: Int?, duration: Int, quadrant: Quadrant,
+            _ title: String, day dayOffset: Int?, start: Int?, duration: Int, quadrant: Quadrant?,
             done: Bool = false, routine: Bool = false, project: Project? = nil
         ) {
             rank += 1
@@ -56,7 +56,7 @@ enum SeedData {
         task("Написать руководителю практики про задолженность", day: -2, start: h(11), duration: 30, quadrant: .urgentImportant, project: study)
         task("Оплатить интернет", day: -3, start: nil, duration: 15, quadrant: .urgent, project: home)
         task("Купить продукты на неделю", day: nil, start: nil, duration: 45, quadrant: .urgent, project: home)
-        task("Сделать бэкап фото", day: nil, start: nil, duration: 30, quadrant: .other)
+        task("Сделать бэкап фото", day: nil, start: nil, duration: 30, quadrant: nil)
         task("Разобрать почту", day: nil, start: nil, duration: 30, quadrant: .other)
         task("Почитать про SwiftUI", day: nil, start: nil, duration: 60, quadrant: .important, project: study)
         task("Обновить резюме", day: nil, start: nil, duration: 60, quadrant: .important)
