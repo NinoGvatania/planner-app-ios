@@ -1,0 +1,1582 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Планировщик — главный экран</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.pln-root{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.pln-root button{font:inherit}
+.pln-root button:focus-visible{outline:2px solid #3EE0A6;outline-offset:2px}
+.pln-scroll{scrollbar-width:none}
+.pln-scroll::-webkit-scrollbar{display:none}
+.pln-input{-webkit-user-select:text;user-select:text}
+.pln-input::placeholder{color:#8B8B94}
+.pln-input:focus{outline:none;box-shadow:0 0 0 2px rgba(62,224,166,.55)}
+@keyframes plnWave{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+@keyframes plnPulse{0%{transform:scale(1);opacity:.45}100%{transform:scale(1.75);opacity:0}}
+@keyframes plnIn{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+</style>
+</helmet>
+<div class="pln-root" data-root="1" onPointerMove="{{ rootMove }}" onPointerUp="{{ rootUp }}" onPointerCancel="{{ rootCancel }}" style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: #0E0F11; color: #F3F4F6; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif">
+
+<header style="flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 62px; box-sizing: border-box; padding: 8px 12px 6px 18px">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<h1 style="margin: 0; font-size: 22px; line-height: 1.15; font-weight: 700; letter-spacing: -0.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ titleMain }}</h1>
+<span style="font-size: 13px; color: #A1A1AA; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ titleSub }}</span>
+</div>
+<div style="flex-shrink: 0; display: flex; align-items: center; gap: 8px">
+<sc-if value="{{ hasOverdue }}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{ openOverdue }}" aria-label="{{ overdueAria }}" style="height: 44px; padding: 0 9px 0 12px; border: 0; border-radius: 22px; background: #3A1D1B; color: #FF7A70; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+<span style="min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #FF6159; color: #1A0706; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{ overdueCount }}</span>
+</button>
+</sc-if>
+<div style="display: flex; align-items: center; gap: 0; padding: 2px; border-radius: 24px; background: #1F2024">
+<button type="button" onClick="{{ toggleViewMenu }}" aria-label="Переключить вид" aria-expanded="{{ viewMenuStr }}" style="width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: {{ viewBtnBg }}; color: #F3F4F6; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<sc-if value="{{ isDay }}" hint-placeholder-val="{{ true }}">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="3"></rect><path d="M9 9h6M9 13h4"></path></svg>
+</sc-if>
+<sc-if value="{{ isThree }}" hint-placeholder-val="{{ false }}">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16M15 4v16"></path></svg>
+</sc-if>
+<sc-if value="{{ isList }}" hint-placeholder-val="{{ false }}">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11"></path><path d="M4.5 7h.01M4.5 12h.01M4.5 17h.01"></path></svg>
+</sc-if>
+<sc-if value="{{ isMatrix }}" hint-placeholder-val="{{ false }}">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"></rect></svg>
+</sc-if>
+</button>
+<button type="button" onClick="{{ goToday }}" aria-label="К сегодняшнему дню" style="position: relative; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: transparent; color: #F3F4F6; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="3.5"></rect><path d="M3.5 9h17M8 2.8v3.4M16 2.8v3.4"></path></svg>
+<span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 21px; text-align: center; font-size: 9px; font-weight: 700; line-height: 1">{{ todayNum }}</span>
+</button>
+</div>
+</div>
+</header>
+
+<sc-if value="{{ isDay }}" hint-placeholder-val="{{ true }}">
+<nav aria-label="Дни недели" style="flex-shrink: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; height: 64px; box-sizing: border-box; padding: 2px 12px 6px 12px">
+<sc-for list="{{ week }}" as="w" hint-placeholder-count="7">
+<button type="button" data-wday="{{ w.i }}" onClick="{{ w.pick }}" aria-label="{{ w.aria }}" aria-pressed="{{ w.pressed }}" style="height: 56px; padding: 0; border: 0; border-radius: 14px; background: {{ w.bg }}; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; transition: background .15s">
+<span style="font-size: 11px; letter-spacing: 0.3px; color: {{ w.wdColor }}">{{ w.wd }}</span>
+<span style="font-size: 17px; line-height: 1; font-weight: 600; color: {{ w.numColor }}">{{ w.num }}</span>
+<span style="width: 4px; height: 4px; border-radius: 2px; background: {{ w.dot }}"></span>
+</button>
+</sc-for>
+</nav>
+</sc-if>
+
+<sc-if value="{{ isThree }}" hint-placeholder-val="{{ false }}">
+<div style="flex-shrink: 0; display: flex; height: 40px; padding: 0 8px 0 0">
+<div style="width: 52px; flex-shrink: 0"></div>
+<div style="flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr))">
+<sc-for list="{{ cols }}" as="c" hint-placeholder-count="3">
+<div data-wday="{{ c.day }}" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 12px; background: {{ c.hBg }}; transition: background .15s">
+<span style="font-size: 13px; color: {{ c.hWdColor }}">{{ c.hWd }}</span>
+<span style="min-width: 28px; height: 28px; padding: 0 4px; box-sizing: border-box; border-radius: 14px; background: {{ c.hNumBg }}; color: {{ c.hNumColor }}; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center">{{ c.hNum }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTimeline }}" hint-placeholder-val="{{ true }}">
+<div style="flex-shrink: 0; display: flex; padding-right: 8px; border-bottom: 1px solid rgba(255,255,255,0.08)">
+<div style="width: 52px; flex-shrink: 0; box-sizing: border-box; padding: 9px 7px 0 0; text-align: right; font-size: 11px; line-height: 1.15; color: #8B8B94">весь<br>день</div>
+<div style="flex: 1; min-width: 0; display: grid; grid-template-columns: repeat({{ colCount }}, minmax(0, 1fr))">
+<sc-for list="{{ cols }}" as="c" hint-placeholder-count="1">
+<div data-allday="{{ c.day }}" style="min-width: 0; min-height: 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 6px 3px 6px 3px; border-left: 1px solid rgba(255,255,255,0.08); background: {{ c.adBg }}; transition: background .15s">
+<sc-for list="{{ c.chips }}" as="k" hint-placeholder-count="1">
+<div onPointerDown="{{ k.down }}" onClick="{{ k.stopClick }}" style="min-width: 0; height: 28px; box-sizing: border-box; display: flex; align-items: center; gap: 2px; padding: 0 8px 0 1px; border-radius: 8px; background: {{ k.bg }}; border: 1px solid {{ k.bd }}; color: {{ k.tx }}; opacity: {{ k.op }}; font-size: 12.5px; touch-action: pan-y; cursor: grab">
+<button type="button" onPointerDown="{{ k.stop }}" onClick="{{ k.toggle }}" aria-label="{{ k.aria }}" style="flex-shrink: 0; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<span style="width: 13px; height: 13px; box-sizing: border-box; border-radius: 7px; border: 2px solid {{ k.ring }}; background: {{ k.fill }}"></span>
+</button>
+<span style="min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: {{ k.deco }}">{{ k.title }}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div class="pln-scroll" data-tl="1" onClick="{{ deselect }}" style="flex: 1; min-height: 0; position: relative; overflow-x: hidden; overflow-y: auto">
+<div style="position: relative; display: flex; height: {{ gridH }}px; padding: 10px 8px 26px 0">
+<div aria-hidden="true" style="position: relative; width: 52px; flex-shrink: 0">
+<sc-for list="{{ hours }}" as="hr" hint-placeholder-count="17">
+<span style="position: absolute; right: 8px; top: {{ hr.top }}px; transform: translateY(-50%); font-size: 11px; color: #8B8B94; font-variant-numeric: tabular-nums; opacity: {{ hr.op }}">{{ hr.label }}</span>
+</sc-for>
+<sc-if value="{{ showNow }}" hint-placeholder-val="{{ false }}">
+<span style="position: absolute; right: 4px; top: {{ nowTop }}px; transform: translateY(-50%); padding: 1px 4px; border-radius: 6px; background: #0E0F11; font-size: 11px; font-weight: 700; color: #3EE0A6; font-variant-numeric: tabular-nums">{{ nowLabel }}</span>
+</sc-if>
+</div>
+<div style="position: relative; flex: 1; min-width: 0; display: grid; grid-template-columns: repeat({{ colCount }}, minmax(0, 1fr))">
+<div aria-hidden="true" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; pointer-events: none">
+<sc-for list="{{ hours }}" as="hr" hint-placeholder-count="17">
+<div style="position: absolute; left: 0; right: 0; top: {{ hr.top }}px; height: 1px; background: rgba(255,255,255,0.08)"></div>
+</sc-for>
+</div>
+<sc-for list="{{ cols }}" as="c" hint-placeholder-count="1">
+<div data-day="{{ c.day }}" style="position: relative; min-width: 0; height: {{ gridH }}px; border-left: 1px solid rgba(255,255,255,0.08); background: {{ c.colBg }}; transition: background .15s">
+<sc-for list="{{ c.blocks }}" as="b" hint-placeholder-count="3">
+<div onPointerDown="{{ b.down }}" onClick="{{ b.stopClick }}" style="position: absolute; z-index: {{ b.z }}; top: {{ b.top }}px; height: {{ b.h }}px; left: calc({{ b.left }}% + 3px); width: calc({{ b.width }}% - 6px); box-sizing: border-box; display: flex; align-items: {{ b.align }}; gap: 3px; padding: {{ b.pad }}; overflow: hidden; border-radius: 9px; background: {{ b.bg }}; border: 1.5px solid {{ b.bd }}; box-shadow: {{ b.shadow }}; color: {{ b.tx }}; opacity: {{ b.op }}; touch-action: pan-y; cursor: grab">
+<button type="button" onPointerDown="{{ b.stop }}" onClick="{{ b.toggle }}" aria-label="{{ b.aria }}" style="flex-shrink: 0; align-self: stretch; width: {{ b.hit }}px; padding: {{ b.hitPad }}; border: 0; background: transparent; display: flex; align-items: {{ b.hitAlign }}; justify-content: center; cursor: pointer">
+<span style="width: {{ b.cs }}px; height: {{ b.cs }}px; box-sizing: border-box; border-radius: 50%; border: 2px solid {{ b.ring }}; background: {{ b.fill }}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{ b.done }}" hint-placeholder-val="{{ false }}">
+<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0E0F11" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</sc-if>
+</span>
+</button>
+<sc-if value="{{ b.tall }}" hint-placeholder-val="{{ true }}">
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 1px">
+<span style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: {{ b.lines }}; max-height: {{ b.titleMax }}px; overflow: hidden; font-size: {{ b.fs }}px; line-height: 1.25; font-weight: 600; text-decoration: {{ b.deco }}">{{ b.title }}</span>
+<span style="font-size: {{ b.fs2 }}px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums">{{ b.time }}</span>
+</div>
+</sc-if>
+<sc-if value="{{ b.short }}" hint-placeholder-val="{{ false }}">
+<div style="min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px">
+<span style="min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: {{ b.fs }}px; font-weight: 600; text-decoration: {{ b.deco }}">{{ b.title }}</span>
+<sc-if value="{{ b.showTime }}" hint-placeholder-val="{{ true }}">
+<span style="flex-shrink: 0; font-size: {{ b.fs2 }}px; opacity: 0.8; font-variant-numeric: tabular-nums">{{ b.timeShort }}</span>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{ c.hasSel }}" hint-placeholder-val="{{ false }}">
+<div onPointerDown="{{ c.rsDown }}" onPointerMove="{{ rsMove }}" onPointerUp="{{ rsUp }}" onPointerCancel="{{ rsCancel }}" onClick="{{ stopClick }}" aria-hidden="true" style="position: absolute; z-index: 4; left: calc({{ c.selLeft }}% + {{ c.selWidth }}% / 2 - 44px); width: 88px; top: {{ c.selHandleTop }}px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none">
+<span style="width: 44px; height: 6px; border-radius: 3px; background: #FFFFFF; box-shadow: 0 0 0 2px #0E0F11"></span>
+</div>
+</sc-if>
+<sc-if value="{{ c.pv }}" hint-placeholder-val="{{ false }}">
+<div aria-hidden="true" style="position: absolute; z-index: 5; left: 3px; right: 3px; top: {{ c.pvTop }}px; height: {{ c.pvH }}px; box-sizing: border-box; padding: 3px 8px; overflow: hidden; border-radius: 9px; border: 2px dashed #3EE0A6; background: rgba(62,224,166,0.14); color: #3EE0A6; font-size: 12px; line-height: 1.3; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none">{{ c.pvLabel }}</div>
+</sc-if>
+<sc-if value="{{ c.now }}" hint-placeholder-val="{{ false }}">
+<div aria-hidden="true" style="position: absolute; z-index: 3; left: 0; right: 0; top: {{ c.nowTop }}px; height: 2px; margin-top: -1px; background: #3EE0A6; pointer-events: none">
+<span style="position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 5px; background: #3EE0A6"></span>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isList }}" hint-placeholder-val="{{ false }}">
+<div class="pln-scroll" data-scroll="1" style="flex: 1; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 16px 14px; overflow-y: auto">
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+<section data-listday="{{ g.day }}" style="flex-shrink: 0; padding: 10px 6px 4px 6px; border-radius: 16px; background: {{ g.bg }}; border: 1px solid {{ g.bd }}; transition: background .15s, border-color .15s">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 8px 4px 8px">
+<span style="font-size: 16px; font-weight: 700; color: {{ g.hColor }}">{{ g.title }}</span>
+<span style="font-size: 12px; color: #8B8B94; white-space: nowrap">{{ g.sub }}</span>
+</div>
+<sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+<div onPointerDown="{{ it.down }}" style="min-height: 46px; display: flex; align-items: center; gap: 2px; opacity: {{ it.op }}; touch-action: pan-y; cursor: grab">
+<span style="width: 70px; flex-shrink: 0; box-sizing: border-box; padding-left: 8px; font-size: 13px; color: #A1A1AA; font-variant-numeric: tabular-nums">{{ it.time }}</span>
+<button type="button" onPointerDown="{{ it.stop }}" onClick="{{ it.toggle }}" aria-label="{{ it.aria }}" style="flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<span style="width: 20px; height: 20px; box-sizing: border-box; border-radius: 10px; border: 2px solid {{ it.ring }}; background: {{ it.fill }}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{ it.done }}" hint-placeholder-val="{{ false }}">
+<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0E0F11" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</sc-if>
+</span>
+</button>
+<span style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; text-decoration: {{ it.deco }}">{{ it.title }}</span>
+<span style="flex-shrink: 0; max-width: 90px; padding: 0 8px; font-size: 12px; color: #8B8B94; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ it.meta }}</span>
+</div>
+</sc-for>
+<sc-if value="{{ g.empty }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 2px 8px 10px 8px; font-size: 13px; color: #8B8B94">Свободно — перетащи сюда задачу</p>
+</sc-if>
+</section>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMatrix }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 10px 8px 10px">
+<div aria-hidden="true" style="flex-shrink: 0; display: grid; grid-template-columns: 18px repeat(2, minmax(0, 1fr)); gap: 0 8px; height: 22px; align-items: center">
+<div></div>
+<div style="text-align: center; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #A1A1AA">Срочно</div>
+<div style="text-align: center; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #A1A1AA">Не срочно</div>
+</div>
+<div style="flex: 1; min-height: 0; display: grid; grid-template-columns: 18px repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px">
+<div aria-hidden="true" style="grid-column: 1; grid-row: 1; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #A1A1AA; white-space: nowrap">Важно</div>
+<div aria-hidden="true" style="grid-column: 1; grid-row: 2; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #A1A1AA; white-space: nowrap">Не важно</div>
+<sc-for list="{{ quads }}" as="qd" hint-placeholder-count="4">
+<section data-quad="{{ qd.q }}" aria-label="{{ qd.name }}" style="grid-column: {{ qd.gc }}; grid-row: {{ qd.gr }}; min-width: 0; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 16px; background: {{ qd.bg }}; border: 1.5px solid {{ qd.bd }}; overflow: hidden; transition: background .15s, border-color .15s">
+<div style="flex-shrink: 0; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 10px">
+<span style="flex-shrink: 0; width: 10px; height: 10px; border-radius: 5px; background: {{ qd.dot }}"></span>
+<span style="min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 700; color: {{ qd.tx }}">{{ qd.label }}</span>
+<span style="flex-shrink: 0; font-size: 12px; font-weight: 600; color: {{ qd.dot }}; font-variant-numeric: tabular-nums">{{ qd.count }}</span>
+</div>
+<div class="pln-scroll" style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; padding: 0 5px 5px 5px">
+<sc-for list="{{ qd.items }}" as="m" hint-placeholder-count="2">
+<div onPointerDown="{{ m.down }}" style="flex-shrink: 0; min-height: 46px; box-sizing: border-box; display: flex; align-items: stretch; gap: 0; padding-right: 6px; border-radius: 10px; background: rgba(0,0,0,0.22); opacity: {{ m.op }}; touch-action: pan-y; cursor: grab">
+<button type="button" onPointerDown="{{ m.stop }}" onClick="{{ m.toggle }}" aria-label="{{ m.aria }}" style="flex-shrink: 0; width: 34px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<span style="width: 16px; height: 16px; box-sizing: border-box; border-radius: 8px; border: 2px solid {{ m.ring }}"></span>
+</button>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 5px 0">
+<span style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 12.5px; line-height: 1.25; color: {{ qd.tx }}">{{ m.title }}</span>
+<span style="font-size: 11px; line-height: 1.2; color: {{ m.metaColor }}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ m.meta }}</span>
+</span>
+</div>
+</sc-for>
+<sc-if value="{{ qd.empty }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 6px 6px; font-size: 12.5px; color: {{ qd.tx }}; opacity: 0.75">Пусто — перетащи сюда</p>
+</sc-if>
+</div>
+</section>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<section data-backlog="1" aria-label="Бэклог" style="position: relative; z-index: 6; flex-shrink: 0; height: {{ drawerH }}px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 22px 22px 0 0; background: {{ drawerBg }}; border-top: 1px solid {{ drawerBd }}; box-shadow: 0 -10px 30px rgba(0,0,0,0.45); transition: {{ drawerTr }}">
+<button type="button" onPointerDown="{{ dwDown }}" onPointerMove="{{ dwMove }}" onPointerUp="{{ dwUp }}" onPointerCancel="{{ dwCancel }}" onClick="{{ dwClick }}" aria-expanded="{{ drawerOpenStr }}" style="flex-shrink: 0; height: 52px; box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 7px 18px 0 18px; border: 0; background: transparent; color: #F3F4F6; text-align: left; cursor: grab; touch-action: none">
+<span style="align-self: center; width: 38px; height: 5px; border-radius: 3px; background: #3A3B41"></span>
+<span style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+<span style="display: flex; align-items: center; gap: 8px">
+<span style="font-size: 17px; font-weight: 700">Бэклог</span>
+<span style="min-width: 22px; height: 22px; padding: 0 7px; box-sizing: border-box; border-radius: 11px; background: #2A2B30; color: #C9C9D1; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center">{{ backlogCount }}</span>
+</span>
+<span style="display: flex; align-items: center; gap: 4px; font-size: 13px; color: {{ drawerHintColor }}; white-space: nowrap">{{ drawerHint }}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate({{ chevRot }}deg); transition: transform .25s"><path d="M6 15l6-6 6 6"></path></svg></span>
+</span>
+</button>
+<div class="pln-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 2px 10px 6px 10px">
+<sc-for list="{{ backlog }}" as="t" hint-placeholder-count="4">
+<div onPointerDown="{{ t.down }}" style="height: 50px; display: flex; align-items: center; gap: 4px; padding-right: 4px; border-radius: 12px; opacity: {{ t.op }}; touch-action: pan-y; cursor: grab">
+<button type="button" onPointerDown="{{ t.stop }}" onClick="{{ t.toggle }}" aria-label="{{ t.aria }}" style="flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<span style="width: 20px; height: 20px; box-sizing: border-box; border-radius: 10px; border: 2px solid {{ t.ring }}; background: {{ t.fill }}"></span>
+</button>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: {{ t.deco }}">{{ t.title }}</span>
+<span style="font-size: 12px; color: #8B8B94; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ t.meta }}</span>
+</span>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="#5A5B63" aria-hidden="true" style="flex-shrink: 0"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+</div>
+</sc-for>
+<sc-if value="{{ backlogEmpty }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 10px 8px; font-size: 14px; color: #8B8B94">Пусто — всё разложено по дням.</p>
+</sc-if>
+</div>
+<form onSubmit="{{ submit }}" style="flex-shrink: 0; height: 76px; box-sizing: border-box; display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px 0 12px; border-top: 1px solid rgba(255,255,255,0.06)">
+<label for="pln-add" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Новая задача</label>
+<input id="pln-add" class="pln-input" type="text" value="{{ input }}" onChange="{{ onInput }}" placeholder="Завтра в 10 созвон, важно" style="flex: 1; min-width: 0; height: 44px; box-sizing: border-box; padding: 0 16px; border: 0; border-radius: 22px; background: #24252A; color: #F3F4F6; font-family: inherit; font-size: 15px">
+<sc-if value="{{ hasInput }}" hint-placeholder-val="{{ false }}">
+<button type="submit" aria-label="Добавить задачу" style="flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #3EE0A6; color: #05261A; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M6 11l6-6 6 6"></path></svg>
+</button>
+</sc-if>
+<sc-if value="{{ noInput }}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{ openVoice }}" aria-label="Голосовой ввод" style="flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #3EE0A6; color: #05261A; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>
+</button>
+</sc-if>
+</form>
+</section>
+
+<sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+<div role="status" style="position: absolute; z-index: 25; left: 16px; right: 16px; bottom: {{ toastBottom }}px; display: flex; justify-content: center; pointer-events: none">
+<div style="max-width: 100%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px; background: #2A2B30; border: 1px solid rgba(255,255,255,0.08); color: #F3F4F6; font-size: 14px; line-height: 1.35; box-shadow: 0 8px 24px rgba(0,0,0,0.4); animation: plnIn .22s ease-out">{{ toast }}</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ dragging }}" hint-placeholder-val="{{ false }}">
+<div aria-hidden="true" style="position: absolute; z-index: 20; left: {{ gx }}px; top: {{ gy }}px; width: 210px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 14px; background: #2A2B30; border: 1.5px solid {{ gBd }}; box-shadow: 0 16px 34px rgba(0,0,0,0.55); transform: rotate(-2deg); pointer-events: none">
+<span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ gTitle }}</span>
+<span style="font-size: 12px; font-weight: 600; color: {{ gMetaColor }}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums">{{ gMeta }}</span>
+</div>
+</sc-if>
+
+<sc-if value="{{ viewMenu }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; z-index: 30; left: 0; top: 0; right: 0; bottom: 0">
+<button type="button" onClick="{{ closeViewMenu }}" aria-label="Закрыть меню" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; padding: 0; border: 0; background: rgba(0,0,0,0.25); cursor: default"></button>
+<div aria-label="Вид" style="position: absolute; top: 60px; right: 14px; width: 292px; box-sizing: border-box; padding: 6px; border-radius: 18px; background: #26272C; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 40px rgba(0,0,0,0.5); animation: plnIn .18s ease-out">
+<sc-for list="{{ viewOpts }}" as="o" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{ o.checked }}" onClick="{{ o.pick }}" style="width: 100%; height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 12px; background: {{ o.bg }}; color: #F3F4F6; font-size: 15px; text-align: left; cursor: pointer">
+<sc-if value="{{ o.isDay }}" hint-placeholder-val="{{ false }}">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="3"></rect><path d="M9 9h6M9 13h4"></path></svg>
+</sc-if>
+<sc-if value="{{ o.isThree }}" hint-placeholder-val="{{ false }}">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16M15 4v16"></path></svg>
+</sc-if>
+<sc-if value="{{ o.isList }}" hint-placeholder-val="{{ false }}">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11"></path><path d="M4.5 7h.01M4.5 12h.01M4.5 17h.01"></path></svg>
+</sc-if>
+<sc-if value="{{ o.isMatrix }}" hint-placeholder-val="{{ false }}">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"></rect></svg>
+</sc-if>
+<span style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ o.label }}</span>
+<sc-if value="{{ o.active }}" hint-placeholder-val="{{ false }}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3EE0A6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</sc-if>
+</button>
+</sc-for>
+<div style="height: 1px; margin: 6px; background: rgba(255,255,255,0.08)"></div>
+<button type="button" aria-pressed="{{ showDoneStr }}" onClick="{{ toggleShowDone }}" style="width: 100%; height: 46px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; border: 0; border-radius: 12px; background: transparent; color: #F3F4F6; font-size: 15px; text-align: left; cursor: pointer">
+<span>Показывать выполненные</span>
+<span style="position: relative; flex-shrink: 0; width: 40px; height: 24px; border-radius: 12px; background: {{ swBg }}; transition: background .2s"><span style="position: absolute; top: 2px; left: {{ swLeft }}px; width: 20px; height: 20px; border-radius: 10px; background: #FFFFFF; transition: left .2s"></span></span>
+</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ overdueOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; z-index: 40; left: 0; top: 0; right: 0; bottom: 0">
+<button type="button" onClick="{{ closeOverdue }}" aria-label="Закрыть" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; padding: 0; border: 0; background: rgba(0,0,0,0.55); cursor: default"></button>
+<section aria-label="Просроченные задачи" style="position: absolute; left: 0; right: 0; bottom: 0; max-height: 680px; box-sizing: border-box; display: flex; flex-direction: column; padding: 8px 0 26px 0; border-radius: 26px 26px 0 0; background: #1A1B1E; box-shadow: 0 -14px 40px rgba(0,0,0,0.5); animation: plnIn .24s ease-out">
+<span style="flex-shrink: 0; align-self: center; width: 38px; height: 5px; border-radius: 3px; background: #3A3B41"></span>
+<div style="flex-shrink: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 14px 12px 12px">
+<button type="button" onClick="{{ closeOverdue }}" aria-label="Закрыть" style="width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #2A2B30; color: #F3F4F6; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+<h2 style="margin: 0; min-width: 0; text-align: center; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Просрочено</h2>
+<button type="button" onClick="{{ toggleMove }}" aria-expanded="{{ moveOpenStr }}" style="height: 44px; padding: 0 16px; border: 0; border-radius: 22px; background: {{ moveBtnBg }}; color: #FFFFFF; font-size: 15px; font-weight: 700; white-space: nowrap; cursor: pointer">Перенести</button>
+</div>
+<sc-if value="{{ moveOpen }}" hint-placeholder-val="{{ false }}">
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; margin: 0 16px 12px 16px; padding: 12px; border-radius: 18px; background: #24252A; animation: plnIn .2s ease-out">
+<button type="button" onClick="{{ fitToday }}" style="min-height: 54px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 14px; border: 0; border-radius: 14px; background: #3EE0A6; color: #05261A; text-align: left; cursor: pointer">
+<span style="font-size: 15px; font-weight: 700">На сегодня — в свободные окна</span>
+<span style="font-size: 12px; opacity: 0.8">{{ moveHint }}</span>
+</button>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" onClick="{{ fitTomorrow }}" style="height: 44px; border: 0; border-radius: 12px; background: #2F3036; color: #F3F4F6; font-size: 15px; font-weight: 600; cursor: pointer">На завтра</button>
+<button type="button" onClick="{{ toBacklog }}" style="height: 44px; border: 0; border-radius: 12px; background: #2F3036; color: #F3F4F6; font-size: 15px; font-weight: 600; cursor: pointer">В бэклог</button>
+</div>
+</div>
+</sc-if>
+<div class="pln-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px">
+<sc-for list="{{ overdue }}" as="o" hint-placeholder-count="3">
+<div style="display: flex; align-items: flex-start; gap: 6px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.07)">
+<button type="button" onClick="{{ o.toggle }}" aria-label="{{ o.aria }}" style="flex-shrink: 0; width: 44px; height: 44px; margin-left: -10px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<span style="width: 24px; height: 24px; box-sizing: border-box; border-radius: 12px; border: 2px solid {{ o.ring }}; background: {{ o.fill }}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{ o.done }}" hint-placeholder-val="{{ false }}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E0F11" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</sc-if>
+</span>
+</button>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; padding-top: 10px">
+<span style="font-size: 16px; line-height: 1.3; color: {{ o.tc }}; text-decoration: {{ o.deco }}">{{ o.title }}</span>
+<span style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="min-width: 0; display: flex; align-items: center; gap: 5px; font-size: 13px; color: #FF7A70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17"></path></svg>{{ o.when }}</span>
+<span style="flex-shrink: 0; font-size: 13px; color: #8B8B94; white-space: nowrap">{{ o.project }}</span>
+</span>
+</div>
+</div>
+</sc-for>
+<sc-if value="{{ overdueEmpty }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 24px 0; text-align: center; font-size: 15px; color: #A1A1AA">Всё чисто — просроченных нет</p>
+</sc-if>
+</div>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{ voiceOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; z-index: 50; left: 0; top: 0; right: 0; bottom: 0">
+<button type="button" onClick="{{ closeVoice }}" aria-label="Закрыть голосовой ввод" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; padding: 0; border: 0; background: rgba(0,0,0,0.6); cursor: default"></button>
+<section aria-label="Голосовой ввод" style="position: absolute; left: 10px; right: 10px; bottom: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; padding: 22px 18px 18px 18px; border-radius: 30px; background: #1A1B1E; border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 20px 50px rgba(0,0,0,0.6); animation: plnIn .24s ease-out">
+<sc-if value="{{ voiceListen }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 12px">
+<div style="position: relative; width: 72px; height: 72px">
+<span style="position: absolute; left: 0; top: 0; width: 72px; height: 72px; border-radius: 36px; background: #3EE0A6; animation: plnPulse 1.6s ease-out infinite"></span>
+<span style="position: absolute; left: 0; top: 0; width: 72px; height: 72px; border-radius: 36px; background: #3EE0A6; color: #05261A; display: flex; align-items: center; justify-content: center">
+<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>
+</span>
+</div>
+<div aria-hidden="true" style="height: 28px; display: flex; align-items: center; gap: 4px">
+<sc-for list="{{ bars }}" as="bar" hint-placeholder-count="9">
+<span style="width: 4px; height: 28px; border-radius: 2px; background: #3EE0A6; animation: plnWave 0.9s ease-in-out infinite; animation-delay: {{ bar.delay }}s"></span>
+</sc-for>
+</div>
+<span style="font-size: 19px; font-weight: 700">Слушаю…</span>
+<span style="font-size: 13px; line-height: 1.4; color: #A1A1AA; text-align: center">В приложении — держишь кнопку и говоришь. Здесь выбери фразу:</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{ phrases }}" as="ph" hint-placeholder-count="4">
+<button type="button" onClick="{{ ph.say }}" style="min-height: 46px; box-sizing: border-box; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; background: #24252A; color: #F3F4F6; font-size: 15px; line-height: 1.3; text-align: left; cursor: pointer">«{{ ph.text }}»</button>
+</sc-for>
+</div>
+<button type="button" onClick="{{ closeVoice }}" style="height: 44px; border: 0; border-radius: 14px; background: transparent; color: #A1A1AA; font-size: 15px; font-weight: 600; cursor: pointer">Отмена</button>
+</sc-if>
+<sc-if value="{{ voiceResult }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #A1A1AA">Ты сказал</span>
+<span style="font-size: 20px; line-height: 1.3; font-weight: 600">«{{ voiceText }}»</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: #24252A">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #3EE0A6">{{ vr.label }}</span>
+<sc-for list="{{ vr.lines }}" as="ln" hint-placeholder-count="3">
+<div style="display: flex; align-items: baseline; gap: 10px">
+<span style="width: 100px; flex-shrink: 0; font-size: 13px; color: #A1A1AA">{{ ln.k }}</span>
+<span style="min-width: 0; font-size: 15px; line-height: 1.35">{{ ln.v }}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" onClick="{{ voiceAgain }}" style="height: 48px; border: 0; border-radius: 14px; background: #2F3036; color: #F3F4F6; font-size: 15px; font-weight: 600; cursor: pointer">Ещё раз</button>
+<button type="button" onClick="{{ voiceDo }}" style="height: 48px; border: 0; border-radius: 14px; background: #3EE0A6; color: #05261A; font-size: 15px; font-weight: 700; cursor: pointer">{{ vr.action }}</button>
+</div>
+</sc-if>
+</section>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scene":{"editor":"enum","options":["day","three","list","matrix","backlog","drag","resize","overdue","voice"],"default":"day"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  init() {
+    if (this.ready) return;
+    this.ready = true;
+    this.SH = 0;
+    this.EH = 24;
+    this.HOUR = 56;
+    this.PXM = 56 / 60;
+    this.NOW = 13 * 60 + 40;
+    this.A = '#3EE0A6';
+    this.CLOSED = 130;
+    this.Q = {
+      1: { dot: '#FF6159', bg: '#3A1D1B', bd: '#5E2B27', tx: '#FFE1DE', name: 'Важно и срочно', label: 'Сделать сейчас' },
+      2: { dot: '#FFC53D', bg: '#3A2E12', bd: '#5E4A1C', tx: '#FFF0C7', name: 'Важно, не срочно', label: 'Запланировать' },
+      3: { dot: '#5E9EFF', bg: '#18263D', bd: '#284270', tx: '#DDE9FF', name: 'Срочно, не важно', label: 'Быстро закрыть' },
+      4: { dot: '#8C8C96', bg: '#232429', bd: '#3A3B42', tx: '#E6E6EB', name: 'Не важно, не срочно', label: 'Когда-нибудь' }
+    };
+    this.WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+    this.WDF = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+    this.MG = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    this.MS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    this.PHRASES = [
+      'Завтра в 10 позвонить в автошколу на полчаса, срочно',
+      'Купить батарейки для пульта',
+      'Перенеси просроченные на сегодня',
+      'Что у меня завтра?'
+    ];
+    this.uid = 100;
+    this.seqN = 100;
+    this.dr = null;
+    this.rs = null;
+    this.dw = null;
+    this.tt = null;
+    this.tick = null;
+    this.last = null;
+    this.swiped = false;
+    this.spring = null;
+    this.h = {
+      rootMove: (e) => { if (this.dr) this.dragMove(e); },
+      rootUp: (e) => { if (this.dr) this.dragEnd(e, false); },
+      rootCancel: (e) => { if (this.dr) this.dragEnd(e, true); },
+      stop: (e) => { e.stopPropagation(); },
+      stopClick: (e) => { e.stopPropagation(); },
+      deselect: () => { if (this.st().sel !== null) this.setState({ sel: null }); },
+      rsMove: (e) => this.resizeMove(e),
+      rsUp: (e) => this.resizeEnd(e, false),
+      rsCancel: (e) => this.resizeEnd(e, true),
+      dwDown: (e) => this.drawerDown(e),
+      dwMove: (e) => this.drawerMove(e),
+      dwUp: (e) => this.drawerUp(e, false),
+      dwCancel: (e) => this.drawerUp(e, true),
+      dwClick: () => this.drawerClick(),
+      openOverdue: () => this.setState({ overdueOpen: true, moveOpen: false, sheetDone: [], viewMenu: false }),
+      closeOverdue: () => this.setState({ overdueOpen: false, moveOpen: false, sheetDone: [] }),
+      toggleMove: () => this.setState({ moveOpen: !this.st().moveOpen }),
+      fitToday: () => this.fitOverdue(0),
+      fitTomorrow: () => this.fitOverdue(1),
+      toBacklog: () => this.overdueToBacklog(),
+      toggleViewMenu: () => this.setState({ viewMenu: !this.st().viewMenu }),
+      closeViewMenu: () => this.setState({ viewMenu: false }),
+      goToday: () => this.setState({ dayOffset: 0, viewMenu: false }),
+      toggleShowDone: () => this.setState({ showDone: !this.st().showDone }),
+      onInput: (e) => this.setState({ input: e.target.value }),
+      submit: (e) => this.submit(e),
+      openVoice: () => this.setState({ voiceOpen: true, voiceText: '', viewMenu: false }),
+      closeVoice: () => this.setState({ voiceOpen: false, voiceText: '' }),
+      voiceAgain: () => this.setState({ voiceText: '' }),
+      voiceDo: () => this.voiceDo()
+    };
+  }
+
+  seed() {
+    let n = 0;
+    const T = (id, title, day, start, dur, q, x) => Object.assign({ id: id, title: title, day: day, start: start, dur: dur, q: q, done: false, routine: false, project: null, seq: ++n }, x || {});
+    const h = (H, M) => H * 60 + (M || 0);
+    return [
+      T('r1', 'Умыться и почистить зубы', 0, h(8), 30, 3, { routine: true, done: true, project: 'Рутины' }),
+      T('r2', 'Завтрак', 0, h(8, 30), 30, 3, { routine: true, done: true, project: 'Рутины' }),
+      T('t1', 'Созвон по практике', 0, h(10), 30, 1, { done: true, project: 'Учёба' }),
+      T('t2', 'Придумать контент для Threads по AI', 0, h(12, 15), 60, 3),
+      T('t3', 'Писать главу диплома', 0, h(14, 30), 90, 1, { project: 'Учёба' }),
+      T('t4', 'Тренировка', 0, h(18, 30), 60, 2, { project: 'Спорт' }),
+      T('t5', 'Полить цветы', 0, null, 15, 4, { project: 'Дом' }),
+      T('t6', 'Созвон с научным руководителем', 1, h(11), 30, 1, { project: 'Учёба' }),
+      T('t7', 'Сдать отчёт по практике', 1, null, 30, 1, { project: 'Учёба' }),
+      T('t8', 'Забрать посылку', 1, h(17), 30, 3),
+      T('t9', 'Спортзал', 2, h(19), 60, 2, { project: 'Спорт' }),
+      T('t10', 'Подготовить презентацию', 3, h(10), 120, 2, { project: 'Учёба' }),
+      T('t11', 'Поездка за город', 5, null, 30, 4),
+      T('o1', 'Позвонить насчёт свидетельства из автошколы', -1, h(10, 30), 30, 3),
+      T('o2', 'Написать руководителю практики про задолженность', -2, h(11), 30, 1, { project: 'Учёба' }),
+      T('o3', 'Оплатить интернет', -3, null, 15, 3, { project: 'Дом' }),
+      T('r3', 'Умыться и почистить зубы', -1, h(8), 30, 3, { routine: true, project: 'Рутины' }),
+      T('r4', 'Завтрак', -1, h(8, 30), 30, 3, { routine: true, project: 'Рутины' }),
+      T('b1', 'Купить продукты на неделю', null, null, 45, 3, { project: 'Дом' }),
+      T('b2', 'Сделать бэкап фото', null, null, 30, 4),
+      T('b3', 'Разобрать почту', null, null, 30, 4),
+      T('b4', 'Почитать про SwiftUI', null, null, 60, 2, { project: 'Учёба' }),
+      T('b5', 'Обновить резюме', null, null, 60, 2),
+      T('b6', 'Записаться к стоматологу', null, null, 15, 1)
+    ];
+  }
+
+  sceneState(sc) {
+    const s = {
+      tasks: this.seed(), mode: 'day', dayOffset: 0, drawerOpen: false, drawerH: null, viewMenu: false, showDone: true,
+      overdueOpen: false, moveOpen: false, sheetDone: [], voiceOpen: false, voiceText: '', input: '', toast: '',
+      drag: null, sel: null, resize: null
+    };
+    if (sc === 'three') s.mode = 'three';
+    if (sc === 'list') s.mode = 'list';
+    if (sc === 'matrix') s.mode = 'matrix';
+    if (sc === 'backlog') s.drawerOpen = true;
+    if (sc === 'drag') s.drag = { id: 'b6', x: 214, y: 430, over: 'col', day: 0, start: 16 * 60, quad: null };
+    if (sc === 'resize') s.sel = 't3';
+    if (sc === 'overdue') { s.overdueOpen = true; s.moveOpen = true; }
+    if (sc === 'voice') { s.voiceOpen = true; s.voiceText = this.PHRASES[0]; }
+    return s;
+  }
+
+  st() {
+    this.init();
+    const sc = (this.props && this.props.scene) || 'day';
+    if (this.scene !== sc) {
+      this.scene = sc;
+      this.base = this.sceneState(sc);
+    }
+    return Object.assign({}, this.base, this.state || {});
+  }
+
+  componentDidMount() { this.pinScroll(); }
+  componentDidUpdate() { this.pinScroll(); this.revealScroll(); }
+
+  revealScroll() {
+    if (this.reveal === null || this.reveal === undefined) return;
+    const at = this.reveal;
+    this.reveal = null;
+    try {
+      const els = document.querySelectorAll('[data-tl]');
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        const want = Math.max(0, Math.round((at - this.SH * 60) * this.PXM) - 120);
+        el.scrollTop = Math.min(want, Math.max(0, el.scrollHeight - el.clientHeight));
+      }
+    } catch (err) {}
+  }
+  componentWillUnmount() { clearTimeout(this.tt); clearInterval(this.tick); clearInterval(this.rsTick); this.blockScroll(null, false); }
+
+  pinScroll() {
+    try {
+      const els = document.querySelectorAll('[data-tl]');
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        if (!el.plnPinned) {
+          el.plnPinned = true;
+          el.scrollTop = (12 - this.SH) * this.HOUR - 4;
+        }
+      }
+    } catch (err) {}
+  }
+
+  date(d) {
+    const t = new Date();
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate() + d);
+  }
+  fmtT(m) {
+    if (m === 1440) return '24:00';
+    const H = Math.floor(m / 60) % 24;
+    const M = m % 60;
+    return H + ':' + (M < 10 ? '0' : '') + M;
+  }
+  fmtDur(m) {
+    if (m < 60) return m + ' мин';
+    const H = Math.floor(m / 60);
+    const M = m % 60;
+    return M ? H + ' ч ' + M + ' мин' : H + ' ч';
+  }
+  cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  plural(n, a, b, c) {
+    const m10 = n % 10;
+    const m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return a;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return b;
+    return c;
+  }
+  dayLabel(d) {
+    if (d === 0) return 'сегодня';
+    if (d === 1) return 'завтра';
+    if (d === 2) return 'послезавтра';
+    if (d === -1) return 'вчера';
+    const x = this.date(d);
+    return this.WD[x.getDay()] + ', ' + x.getDate() + ' ' + this.MS[x.getMonth()];
+  }
+  when(t) {
+    if (t.day === null || t.day === undefined) return 'в бэклоге, без даты';
+    const base = this.dayLabel(t.day);
+    if (t.start === null || t.start === undefined) return base + ' · весь день';
+    return base + ' · ' + this.fmtT(t.start) + '–' + this.fmtT(t.start + (t.dur || 30));
+  }
+  isOverdue(t) { return t.day !== null && t.day < 0 && !t.done && !t.routine; }
+  scaleOf(el) {
+    if (!el) return 1;
+    const r = el.getBoundingClientRect();
+    return el.offsetHeight ? (r.height / el.offsetHeight) || 1 : 1;
+  }
+  rootOf(el) { return el && el.closest ? el.closest('[data-root]') : null; }
+
+  toast(msg) {
+    clearTimeout(this.tt);
+    this.setState({ toast: msg });
+    this.tt = setTimeout(() => { this.setState({ toast: '' }); }, 2800);
+  }
+
+  toggle(id) {
+    const s = this.st();
+    const t0 = s.tasks.find((t) => t.id === id);
+    if (!t0) return;
+    const patch = { tasks: s.tasks.map((t) => (t.id === id ? Object.assign({}, t, { done: !t.done }) : t)) };
+    if (s.overdueOpen && s.sheetDone.indexOf(id) === -1) patch.sheetDone = s.sheetDone.concat([id]);
+    this.setState(patch);
+    if (!t0.done && t0.day === null) this.toast('Готово: «' + t0.title + '»');
+  }
+
+  layout(list, rz) {
+    const durOf = (t) => (rz && rz.id === t.id ? rz.dur : (t.dur || 30));
+    const ev = list.slice().sort((a, b) => a.start - b.start || durOf(b) - durOf(a));
+    const out = [];
+    let cluster = [];
+    let lanes = [];
+    let maxEnd = -1;
+    const flush = () => {
+      const n = Math.max(1, lanes.length);
+      cluster.forEach((o) => { o.n = n; });
+      cluster = [];
+      lanes = [];
+    };
+    ev.forEach((t) => {
+      const st = t.start;
+      const en = st + Math.max(durOf(t), 26);
+      if (cluster.length && st >= maxEnd) flush();
+      if (!cluster.length) maxEnd = en;
+      let lane = -1;
+      for (let i = 0; i < lanes.length; i++) {
+        if (lanes[i] <= st) { lane = i; break; }
+      }
+      if (lane === -1) { lane = lanes.length; lanes.push(en); } else { lanes[lane] = en; }
+      const o = { t: t, lane: lane, n: 1 };
+      cluster.push(o);
+      out.push(o);
+      if (en > maxEnd) maxEnd = en;
+    });
+    flush();
+    return out;
+  }
+
+  dragStart(t, from) {
+    return (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (this.rs || this.dw) return;
+      this.abortDrag();
+      const el = e.currentTarget;
+      const root = this.rootOf(el);
+      let offY = null;
+      if (from === 'timeline') {
+        const br = el.getBoundingClientRect();
+        offY = (e.clientY - br.top) / this.scaleOf(root);
+      }
+      const touch = e.pointerType === 'touch';
+      this.dr = { id: t.id, dur: t.dur || 30, offY: offY, sx: e.clientX, sy: e.clientY, pid: e.pointerId, started: false, from: from, collapsed: false, root: root, touch: touch, timer: null };
+      this.last = { x: e.clientX, y: e.clientY };
+      if (touch) {
+        this.dr.timer = setTimeout(() => this.promoteDrag(), 300);
+      } else {
+        try { root.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+    };
+  }
+
+  promoteDrag() {
+    const d = this.dr;
+    if (!d || d.started) return;
+    d.timer = null;
+    d.started = true;
+    try { d.root.setPointerCapture(d.pid); } catch (err) {}
+    this.blockScroll(d.root, true);
+    clearInterval(this.tick);
+    this.tick = setInterval(() => this.dragTick(), 50);
+    this.dragUpdate(true);
+  }
+
+  abortDrag() {
+    const d = this.dr;
+    if (!d) return;
+    if (d.timer) clearTimeout(d.timer);
+    clearInterval(this.tick);
+    this.tick = null;
+    this.spring = null;
+    this.blockScroll(d.root, false);
+    this.dr = null;
+    if (this.st().drag) this.setState({ drag: null });
+  }
+
+  blockScroll(root, on) {
+    if (on && root && !this.tmHandler) {
+      this.tmHandler = (ev) => { ev.preventDefault(); };
+      this.tmRoot = root;
+      try { root.addEventListener('touchmove', this.tmHandler, { passive: false }); } catch (err) {}
+    } else if (!on && this.tmHandler) {
+      try { this.tmRoot.removeEventListener('touchmove', this.tmHandler); } catch (err) {}
+      this.tmHandler = null;
+      this.tmRoot = null;
+    }
+  }
+
+  dragMove(e) {
+    const d = this.dr;
+    if (!d) return;
+    this.last = { x: e.clientX, y: e.clientY };
+    if (!d.started) {
+      const dx = e.clientX - d.sx;
+      const dy = e.clientY - d.sy;
+      if (d.touch) {
+        if (dx * dx + dy * dy > 100) this.abortDrag();
+        return;
+      }
+      if (dx * dx + dy * dy < 49) return;
+      this.promoteDrag();
+      return;
+    }
+    this.dragUpdate(true);
+  }
+
+  dragUpdate(force) {
+    const d = this.dr;
+    if (!d || !d.started || !this.last) return;
+    const s = this.st();
+    const p = this.local(d.root, this.last.x, this.last.y);
+    const hit = this.hit(this.last.x, this.last.y, d);
+    const next = { id: d.id, x: p.x, y: p.y, over: hit ? hit.kind : null, day: hit ? hit.day : null, start: hit ? hit.start : null, quad: hit ? hit.quad : null };
+    const cur = s.drag;
+    const same = cur && !force && cur.over === next.over && cur.day === next.day && cur.start === next.start && cur.quad === next.quad;
+    const patch = {};
+    if (!same) patch.drag = next;
+    if (d.from === 'backlog' && !d.collapsed) { d.collapsed = true; patch.drawerOpen = false; patch.drawerH = null; }
+    if (s.viewMenu) patch.viewMenu = false;
+    if (Object.keys(patch).length) this.setState(patch);
+  }
+
+  dragTick() {
+    const d = this.dr;
+    if (!d || !d.started || !this.last) return;
+    const scrolled = this.autoScroll(d.root, this.last.y);
+    const s = this.st();
+    const hit = this.hit(this.last.x, this.last.y, d);
+    if (s.mode === 'day' && hit && hit.kind === 'wday' && hit.day !== s.dayOffset) {
+      const now = Date.now();
+      if (!this.spring || this.spring.day !== hit.day) this.spring = { day: hit.day, at: now };
+      else if (now - this.spring.at > 380) { this.spring = null; this.setState({ dayOffset: hit.day }); }
+    } else {
+      this.spring = null;
+    }
+    if (scrolled) this.dragUpdate(true);
+    else this.dragUpdate(false);
+  }
+
+  dragEnd(e, cancelled) {
+    const d = this.dr;
+    if (!d) return;
+    if (d.timer) clearTimeout(d.timer);
+    clearInterval(this.tick);
+    this.tick = null;
+    this.spring = null;
+    this.blockScroll(d.root, false);
+    this.dr = null;
+    if (!d.started) {
+      if (!cancelled && (d.from === 'timeline' || d.from === 'allday')) {
+        const s = this.st();
+        this.setState({ sel: s.sel === d.id ? null : d.id, resize: null });
+      }
+      return;
+    }
+    if (cancelled) { this.setState({ drag: null }); return; }
+    this.drop(d.id, this.hit(e.clientX, e.clientY, d));
+  }
+
+  local(root, x, y) {
+    if (!root) return { x: x, y: y };
+    const r = root.getBoundingClientRect();
+    const sc = root.offsetWidth ? r.width / root.offsetWidth : 1;
+    return { x: (x - r.left) / (sc || 1), y: (y - r.top) / (sc || 1) };
+  }
+
+  autoScroll(root, y) {
+    if (!root) return false;
+    const el = root.querySelector('[data-tl]') || root.querySelector('[data-scroll]');
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const sc = el.offsetHeight ? r.height / el.offsetHeight : 1;
+    const edge = 52 * sc;
+    const before = el.scrollTop;
+    if (y < r.top + edge && y > r.top - 30 * sc) el.scrollTop -= 12;
+    else if (y > r.bottom - edge && y < r.bottom + 10 * sc) el.scrollTop += 12;
+    return el.scrollTop !== before;
+  }
+
+  hit(x, y, d) {
+    const dur = d.dur || 30;
+    const offY = d.offY !== null && d.offY !== undefined ? d.offY : Math.min(dur * this.PXM / 2, 20);
+    let el = null;
+    try { el = document.elementFromPoint(x, y); } catch (err) { el = null; }
+    if (!el || !el.closest) return null;
+    const num = (node, attr) => parseInt(node.getAttribute(attr), 10);
+    let n = el.closest('[data-backlog]');
+    if (n) return { kind: 'backlog', day: null, start: null, quad: null };
+    n = el.closest('[data-quad]');
+    if (n) return { kind: 'quad', day: null, start: null, quad: num(n, 'data-quad') };
+    n = el.closest('[data-wday]');
+    if (n) return { kind: 'wday', day: num(n, 'data-wday'), start: null, quad: null };
+    n = el.closest('[data-allday]');
+    if (n) return { kind: 'allday', day: num(n, 'data-allday'), start: null, quad: null };
+    n = el.closest('[data-listday]');
+    if (n) return { kind: 'list', day: num(n, 'data-listday'), start: null, quad: null };
+    n = el.closest('[data-day]');
+    if (n) {
+      const r = n.getBoundingClientRect();
+      const sc = n.offsetHeight ? r.height / n.offsetHeight : 1;
+      const yy = (y - r.top) / (sc || 1) - offY;
+      let st = this.SH * 60 + Math.round(yy / this.PXM / 15) * 15;
+      st = Math.max(this.SH * 60, Math.min(st, this.EH * 60 - dur));
+      return { kind: 'col', day: num(n, 'data-day'), start: st, quad: null };
+    }
+    return null;
+  }
+
+  drop(id, hit) {
+    const s = this.st();
+    const t0 = s.tasks.find((t) => t.id === id);
+    if (!t0 || !hit) { this.setState({ drag: null }); return; }
+    const t = Object.assign({}, t0);
+    const patch = { drag: null };
+    let msg = '';
+    if (hit.kind === 'backlog') {
+      if (t0.day !== null) { t.day = null; t.start = null; t.seq = ++this.seqN; msg = 'Вернул в бэклог: «' + t.title + '»'; }
+    } else if (hit.kind === 'quad') {
+      if (t0.q !== hit.quad) { t.q = hit.quad; msg = '«' + t.title + '» → ' + this.Q[hit.quad].name.toLowerCase(); }
+    } else if (hit.kind === 'col') {
+      t.day = hit.day; t.start = hit.start; patch.sel = t.id;
+    } else if (hit.kind === 'allday') {
+      t.day = hit.day; t.start = null;
+    } else {
+      t.day = hit.day;
+      if (t.day !== t0.day || t0.day === null) msg = '«' + t.title + '» — ' + this.when(t);
+    }
+    patch.tasks = s.tasks.map((x) => (x.id === id ? t : x));
+    this.setState(patch);
+    if (msg) this.toast(msg);
+  }
+
+  resizeStart(t) {
+    return (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.stopPropagation();
+      const el = e.currentTarget;
+      const root = this.rootOf(el);
+      const col = el.closest('[data-day]');
+      const dur0 = t.dur || 30;
+      const topPx = (t.start - this.SH * 60) * this.PXM + 1;
+      const yy = this.colY(col, e.clientY);
+      this.rs = { id: t.id, dur0: dur0, start: t.start, col: col, root: root, topPx: topPx, grab: yy - (topPx + Math.max(dur0 * this.PXM - 2, 24)) };
+      this.last = { x: e.clientX, y: e.clientY };
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+      this.blockScroll(root, true);
+      clearInterval(this.rsTick);
+      this.rsTick = setInterval(() => { if (this.rs && this.last && this.autoScroll(this.rs.root, this.last.y)) this.resizeAt(this.last.y); }, 50);
+      this.setState({ resize: { id: t.id, dur: dur0 } });
+    };
+  }
+
+  colY(col, clientY) {
+    if (!col) return 0;
+    const r = col.getBoundingClientRect();
+    const sc = col.offsetHeight ? (r.height / col.offsetHeight) || 1 : 1;
+    return (clientY - r.top) / sc;
+  }
+
+  resizeAt(clientY) {
+    const r = this.rs;
+    if (!r) return;
+    const yy = this.colY(r.col, clientY) - r.grab;
+    let dur = Math.round((yy - r.topPx) / this.PXM / 15) * 15;
+    dur = Math.max(15, Math.min(dur, this.EH * 60 - r.start));
+    const cur = this.st().resize;
+    if (!cur || cur.dur !== dur) this.setState({ resize: { id: r.id, dur: dur } });
+  }
+
+  resizeMove(e) {
+    if (!this.rs) return;
+    this.last = { x: e.clientX, y: e.clientY };
+    this.resizeAt(e.clientY);
+  }
+
+  resizeEnd(e, cancelled) {
+    const r = this.rs;
+    this.rs = null;
+    clearInterval(this.rsTick);
+    this.rsTick = null;
+    if (!r) return;
+    this.blockScroll(r.root, false);
+    const s = this.st();
+    const live = s.resize && s.resize.id === r.id ? s.resize.dur : r.dur0;
+    const dur = cancelled ? r.dur0 : live;
+    this.setState({ resize: null, tasks: s.tasks.map((t) => (t.id === r.id ? Object.assign({}, t, { dur: dur }) : t)) });
+  }
+
+  openH(n) { return this.CLOSED + (n ? Math.min(n, 6) * 50 + 8 : 48); }
+
+  drawerDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (this.dr) return;
+    const s = this.st();
+    const n = s.tasks.filter((t) => t.day === null && (!t.done || s.showDone)).length;
+    const el = e.currentTarget;
+    this.swiped = false;
+    this.dw = { sy: e.clientY, h0: s.drawerH !== null ? s.drawerH : (s.drawerOpen ? this.openH(n) : this.CLOSED), open: this.openH(n), moved: false, scale: this.scaleOf(this.rootOf(el)), h: null };
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  drawerMove(e) {
+    const d = this.dw;
+    if (!d) return;
+    const dy = (e.clientY - d.sy) / (d.scale || 1);
+    if (!d.moved && Math.abs(dy) < 6) return;
+    d.moved = true;
+    const h = Math.max(this.CLOSED, Math.min(d.h0 - dy, d.open));
+    if (d.h !== h) { d.h = h; this.setState({ drawerH: h }); }
+  }
+
+  drawerUp(e, cancelled) {
+    const d = this.dw;
+    this.dw = null;
+    if (!d) return;
+    if (!d.moved) return;
+    if (!cancelled) {
+      this.swiped = true;
+      setTimeout(() => { this.swiped = false; }, 400);
+    }
+    const dy = (e.clientY - d.sy) / (d.scale || 1);
+    let open;
+    if (dy < -40) open = true;
+    else if (dy > 40) open = false;
+    else open = (d.h !== null ? d.h : d.h0) > (this.CLOSED + d.open) / 2;
+    if (cancelled) open = d.h0 > (this.CLOSED + d.open) / 2;
+    this.setState({ drawerOpen: open, drawerH: null });
+  }
+
+  drawerClick() {
+    if (this.swiped) { this.swiped = false; return; }
+    this.setState({ drawerOpen: !this.st().drawerOpen, drawerH: null });
+  }
+
+  fit(tasks, ids, day, from) {
+    const out = tasks.map((t) => Object.assign({}, t));
+    const busy = out
+      .filter((t) => t.day === day && t.start !== null && ids.indexOf(t.id) === -1)
+      .map((t) => [t.start, t.start + (t.dur || 30)]);
+    const todo = out.filter((t) => ids.indexOf(t.id) !== -1).sort((a, b) => a.q - b.q || a.day - b.day);
+    const placed = [];
+    let left = 0;
+    todo.forEach((t) => {
+      const dur = t.dur || 30;
+      let st = Math.ceil(from / 15) * 15;
+      for (let g = 0; g < 300; g++) {
+        const c = busy.find((b) => st < b[1] && st + dur > b[0]);
+        if (!c) break;
+        st = Math.ceil(c[1] / 15) * 15;
+      }
+      if (st + dur > this.EH * 60) { t.day = null; t.start = null; t.seq = ++this.seqN; left++; return; }
+      t.day = day;
+      t.start = st;
+      busy.push([st, st + dur]);
+      placed.push(st);
+    });
+    return { tasks: out, placed: placed, left: left };
+  }
+
+  fitOverdue(day) {
+    const s = this.st();
+    const ids = s.tasks.filter((t) => this.isOverdue(t)).map((t) => t.id);
+    if (!ids.length) {
+      this.setState({ overdueOpen: false, moveOpen: false, sheetDone: [] });
+      this.toast('Просроченных задач нет');
+      return;
+    }
+    const res = this.fit(s.tasks, ids, day, day === 0 ? this.NOW : 9 * 60);
+    const patch = { tasks: res.tasks, overdueOpen: false, moveOpen: false, sheetDone: [], sel: null, resize: null };
+    if (s.mode === 'three' && day >= s.dayOffset && day <= s.dayOffset + 2) { /* visible already */ }
+    else { patch.mode = 'day'; patch.dayOffset = day; }
+    if (res.placed.length) this.reveal = Math.min.apply(null, res.placed);
+    this.setState(patch);
+    const times = res.placed.slice().sort((a, b) => a - b).map((m) => this.fmtT(m));
+    let msg = times.length ? (day === 0 ? 'Разложил на сегодня: ' : 'Перенёс на завтра: ') + times.join(', ') : 'Свободных окон нет';
+    if (res.left) msg += ' · не влезло ' + res.left + ' — в бэклоге';
+    this.toast(msg);
+  }
+
+  overdueToBacklog() {
+    const s = this.st();
+    let n = 0;
+    const tasks = s.tasks.map((t) => {
+      if (!this.isOverdue(t)) return t;
+      n++;
+      return Object.assign({}, t, { day: null, start: null, seq: ++this.seqN });
+    });
+    this.setState({ tasks: tasks, overdueOpen: false, moveOpen: false, sheetDone: [], drawerOpen: n > 0 ? true : s.drawerOpen, drawerH: null });
+    this.toast(n ? 'Убрал в бэклог: ' + n + ' ' + this.plural(n, 'задачу', 'задачи', 'задач') : 'Просроченных задач нет');
+  }
+
+  parse(text) {
+    let orig = ' ' + String(text).replace(/[.!?]+(?=\s|$)/g, ' ').replace(/;|,(?=\s|$)/g, ' ') + ' ';
+    let low = orig.toLowerCase().replace(/ё/g, 'е');
+    const take = (re) => {
+      const m = re.exec(low);
+      if (!m) return null;
+      const a = m.index;
+      const b = m.index + m[0].length;
+      m.src = orig.slice(a, b);
+      low = low.slice(0, a) + ' ' + low.slice(b);
+      orig = orig.slice(0, a) + ' ' + orig.slice(b);
+      return m;
+    };
+    const P = '(?=[\\s.,:;!?])';
+    const R = (src) => new RegExp(src + P);
+    const r = { day: null, start: null, dur: 30, q: 4, project: null, title: '' };
+    let m = null;
+    let imp = null;
+    let urg = null;
+    let explicit = false;
+    if ((m = take(/\s!([1-4])(?=\s)/))) { r.q = Number(m[1]); explicit = true; }
+    while ((m = take(R('\\s(не\\s?)?(важн|срочн)[а-я]*')))) {
+      if (m[2] === 'важн') imp = !m[1]; else urg = !m[1];
+    }
+    if (!explicit && (imp !== null || urg !== null)) {
+      if (imp && urg) r.q = 1;
+      else if (imp) r.q = 2;
+      else if (urg) r.q = 3;
+      else r.q = 4;
+    }
+    if ((m = take(R('\\s#([0-9a-zа-я_-]+)')))) r.project = this.cap(m.src.trim().slice(1));
+    if (take(R('\\sсегодня'))) r.day = 0;
+    else if (take(R('\\sпослезавтра'))) r.day = 2;
+    else if (take(R('\\sзавтра'))) r.day = 1;
+    else if ((m = take(R('\\s(?:в|во)\\s(понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье)')))) {
+      const idx = { 'воскресенье': 0, 'понедельник': 1, 'вторник': 2, 'среду': 3, 'четверг': 4, 'пятницу': 5, 'субботу': 6 }[m[1]];
+      let diff = (idx - new Date().getDay() + 7) % 7;
+      if (diff === 0) diff = 7;
+      r.day = diff;
+    }
+    if (take(R('\\s(?:на\\s)?полчаса'))) r.dur = 30;
+    else if (take(R('\\s(?:на\\s)?полтора\\sчаса'))) r.dur = 90;
+    else if ((m = take(R('\\s(?:на\\s)?(\\d{1,3})\\s?(?:минуты|минуту|минут|мин)')))) r.dur = Math.max(5, Number(m[1]));
+    else if ((m = take(R('\\sна\\s(\\d{1,2}(?:[.,]5)?)\\s?(?:часов|часа|час|ч)')))) r.dur = Math.round(parseFloat(m[1].replace(',', '.')) * 60);
+    else if (take(R('\\sна\\sчас'))) r.dur = 60;
+    let pod = null;
+    if (take(R('\\sутром'))) pod = 'утра';
+    else if (take(R('\\sднем'))) pod = 'дня';
+    else if (take(R('\\sвечером'))) pod = 'вечера';
+    else if (take(R('\\sночью'))) pod = 'ночи';
+    const W = { 'час': 1, 'два': 2, 'три': 3, 'четыре': 4, 'пять': 5, 'шесть': 6, 'семь': 7, 'восемь': 8, 'девять': 9, 'десять': 10, 'одиннадцать': 11, 'двенадцать': 12 };
+    let H = null;
+    let M = 0;
+    let q = null;
+    if ((m = take(R('\\s(?:в|к|на)\\s(\\d{1,2})[:.](\\d{2})(?:\\s(утра|дня|вечера|ночи))?')))) { H = Number(m[1]); M = Number(m[2]); q = m[3] || null; }
+    else if ((m = take(R('\\s(?:в|к)\\s(\\d{1,2})(?:\\s?(?:часов|часа|час|ч))?(?:\\s(утра|дня|вечера|ночи))?')))) { H = Number(m[1]); q = m[2] || null; }
+    else if ((m = take(R('\\s(?:в|к)\\s(час|два|три|четыре|пять|шесть|семь|восемь|девять|десять|одиннадцать|двенадцать)(?:\\s(утра|дня|вечера|ночи))?')))) { H = W[m[1]]; q = m[2] || null; }
+    else if (take(R('\\s(?:в\\s)?полдень'))) H = 12;
+    else if (pod === 'утра') H = 9;
+    else if (pod === 'дня') H = 14;
+    else if (pod === 'вечера') H = 19;
+    else if (pod === 'ночи') H = 23;
+    if (H !== null) {
+      if (!q) q = pod;
+      if (q === 'вечера' && H < 12) H += 12;
+      else if (q === 'дня' && H <= 6) H += 12;
+      else if (q === 'ночи' && H === 12) H = 0;
+      else if (!q && H >= 1 && H <= 6) H += 12;
+      if (H >= 0 && H <= 23 && M >= 0 && M <= 59) {
+        r.start = H * 60 + M;
+        if (r.day === null) r.day = 0;
+      }
+    }
+    let title = orig.replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < 3; i++) {
+      title = title.replace(/^[.,:;!?–—-]+\s*/, '').replace(/\s*[.,:;!?–—-]+$/, '');
+      title = title.replace(/^(?:но|и|а|зато|только)\s+/i, '').replace(/\s+(?:и|но|а|зато|только)$/i, '');
+      title = title.replace(/\s+(?:и|но|а)\s+(?=(?:и|но|а)\s)/gi, ' ');
+    }
+    r.title = this.cap(title) || 'Новая задача';
+    return r;
+  }
+
+  interpret(text) {
+    const s = this.st();
+    const low = String(text).toLowerCase().replace(/ё/g, 'е').trim();
+    if (/просроч/.test(low) && /(перенес|разлож|раскида|перекин|постав)/.test(low)) {
+      const day = /завтра/.test(low) ? 1 : 0;
+      const n = s.tasks.filter((t) => this.isOverdue(t)).length;
+      return {
+        kind: 'fit', day: day, label: 'Команда', action: n ? 'Выполнить' : 'Понятно',
+        lines: [
+          { k: 'Сделаю', v: day ? 'Перенесу просроченные на завтра, с 9:00' : 'Разложу просроченные по свободным окнам сегодня' },
+          { k: 'Задач', v: String(n) }
+        ]
+      };
+    }
+    if (/^(что|какие|покажи|расскажи)/.test(low)) {
+      const day = /послезавтра/.test(low) ? 2 : /завтра/.test(low) ? 1 : 0;
+      const items = s.tasks
+        .filter((t) => t.day === day && !t.done)
+        .sort((a, b) => (a.start === null ? -1 : a.start) - (b.start === null ? -1 : b.start));
+      const lines = items.length
+        ? items.map((t) => ({ k: t.start === null ? 'весь день' : this.fmtT(t.start), v: t.title }))
+        : [{ k: '—', v: 'Ничего не запланировано' }];
+      const summary = this.cap(this.dayLabel(day)) + ': ' + (items.length
+        ? items.map((t) => (t.start === null ? '' : this.fmtT(t.start) + ' ') + t.title).join('; ')
+        : 'ничего не запланировано');
+      return { kind: 'agenda', day: day, label: 'Ответ · ' + this.dayLabel(day), action: 'Понятно', lines: lines, summary: summary };
+    }
+    const p = this.parse(text);
+    const lines = [{ k: 'Задача', v: p.title }, { k: 'Когда', v: this.cap(this.when(p)) }];
+    if (p.start !== null) lines.push({ k: 'Длительность', v: this.fmtDur(p.dur) });
+    lines.push({ k: 'Квадрант', v: this.Q[p.q].name });
+    if (p.project) lines.push({ k: 'Проект', v: p.project });
+    return { kind: 'task', label: 'Новая задача', action: 'Добавить', lines: lines, parsed: p };
+  }
+
+  exec(r) {
+    if (r.kind === 'fit') this.fitOverdue(r.day);
+    else if (r.kind === 'agenda') this.toast(r.summary);
+    else this.addTask(r.parsed);
+  }
+
+  addTask(p) {
+    const s = this.st();
+    const t = { id: 'n' + this.uid++, title: p.title, day: p.day, start: p.start, dur: p.dur || 30, q: p.q || 4, done: false, routine: false, project: p.project, seq: ++this.seqN };
+    const patch = { tasks: s.tasks.concat([t]) };
+    if (t.day !== null && s.mode === 'day' && t.day >= 0 && t.day <= 6) patch.dayOffset = t.day;
+    if (t.day !== null && s.mode === 'three' && (t.day < s.dayOffset || t.day > s.dayOffset + 2)) patch.dayOffset = t.day;
+    if (t.start !== null && (s.mode === 'day' || s.mode === 'three')) { patch.sel = t.id; patch.resize = null; this.reveal = t.start; }
+    this.setState(patch);
+    const qs = t.q < 4 ? ' · ' + this.Q[t.q].name.toLowerCase() : '';
+    this.toast((t.day === null ? 'В бэклог: «' + t.title + '»' : '«' + t.title + '» — ' + this.when(t)) + qs);
+  }
+
+  submit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const text = (this.st().input || '').trim();
+    if (!text) return;
+    this.setState({ input: '' });
+    this.exec(this.interpret(text));
+  }
+
+  voiceDo() {
+    const text = this.st().voiceText;
+    this.setState({ voiceOpen: false, voiceText: '' });
+    if (!text) return;
+    const r = this.interpret(text);
+    if (r.kind !== 'agenda') this.exec(r);
+  }
+
+  renderVals() {
+    const s = this.st();
+    const A = this.A;
+    const drag = s.drag;
+    const dragId = drag ? drag.id : null;
+    const three = s.mode === 'three';
+    const list = s.mode === 'list';
+    const matrix = s.mode === 'matrix';
+    const isDay = s.mode === 'day';
+    const timeline = isDay || three;
+    const vis = s.showDone ? s.tasks : s.tasks.filter((t) => !t.done);
+    const act = (t, from) => ({
+      down: this.dragStart(t, from),
+      stop: this.h.stop,
+      stopClick: this.h.stopClick,
+      toggle: () => this.toggle(t.id),
+      aria: (t.done ? 'Вернуть в работу: ' : 'Отметить выполненной: ') + t.title
+    });
+
+    const openCount = s.tasks.filter((t) => !t.done && !t.routine).length;
+    const d0 = this.date(s.dayOffset);
+    let titleMain = d0.getDate() + ' ' + this.MG[d0.getMonth()];
+    let titleSub = (s.dayOffset === 0 ? 'Сегодня, ' : s.dayOffset === 1 ? 'Завтра, ' : '') + this.WDF[d0.getDay()];
+    if (three || list) {
+      const d1 = this.date(s.dayOffset + (three ? 2 : 6));
+      titleMain = d0.getMonth() === d1.getMonth()
+        ? d0.getDate() + '–' + d1.getDate() + ' ' + this.MS[d0.getMonth()]
+        : d0.getDate() + ' ' + this.MS[d0.getMonth()] + ' – ' + d1.getDate() + ' ' + this.MS[d1.getMonth()];
+      titleSub = three ? 'Три дня' : 'Неделя списком';
+    } else if (matrix) {
+      titleMain = 'Матрица';
+      titleSub = openCount + ' ' + this.plural(openCount, 'открытая задача', 'открытые задачи', 'открытых задач');
+    }
+
+    const overdueCount = s.tasks.filter((t) => this.isOverdue(t)).length;
+    const overdue = s.tasks
+      .filter((t) => t.day !== null && t.day < 0 && !t.routine && (!t.done || s.sheetDone.indexOf(t.id) !== -1))
+      .sort((a, b) => a.day - b.day || (a.start === null ? 0 : a.start) - (b.start === null ? 0 : b.start))
+      .map((t) => Object.assign(act(t, 'overdue'), {
+        title: t.title,
+        when: this.when(t),
+        project: t.project || '',
+        ring: this.Q[t.q].dot,
+        fill: t.done ? this.Q[t.q].dot : 'transparent',
+        done: t.done,
+        deco: t.done ? 'line-through' : 'none',
+        tc: t.done ? '#8B8B94' : '#F3F4F6'
+      }));
+
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      const d = this.date(i);
+      const sel = i === s.dayOffset;
+      const hov = !!(drag && drag.over === 'wday' && drag.day === i);
+      const has = vis.some((t) => t.day === i);
+      week.push({
+        i: i,
+        wd: this.WD[d.getDay()],
+        num: d.getDate(),
+        aria: this.WDF[d.getDay()] + ', ' + d.getDate() + ' ' + this.MG[d.getMonth()],
+        pressed: sel ? 'true' : 'false',
+        bg: sel ? A : hov ? 'rgba(62,224,166,0.22)' : 'transparent',
+        wdColor: sel ? '#05261A' : '#8B8B94',
+        numColor: sel ? '#05261A' : i === 0 ? A : '#F3F4F6',
+        dot: has ? (sel ? '#05261A' : '#5A5B63') : 'transparent',
+        pick: () => this.setState({ dayOffset: i })
+      });
+    }
+
+    const nCols = three ? 3 : 1;
+    const dragTask = drag ? s.tasks.find((t) => t.id === drag.id) : null;
+    const dDur = dragTask ? dragTask.dur || 30 : 30;
+    const nowTop = Math.round((this.NOW - this.SH * 60) * this.PXM);
+    const cols = [];
+    if (timeline) {
+      for (let c = 0; c < nCols; c++) {
+        const day = s.dayOffset + c;
+        const dd = this.date(day);
+        const dayTasks = vis.filter((t) => t.day === day);
+        const col = { day: day, hasSel: false };
+        const blocks = this.layout(dayTasks.filter((t) => t.start !== null), s.resize).map((o) => {
+          const t = o.t;
+          const P = this.Q[t.q];
+          const isSel = !drag && s.sel === t.id;
+          const dur = s.resize && s.resize.id === t.id ? s.resize.dur : (t.dur || 30);
+          const h = Math.round(Math.max(dur * this.PXM - 2, 24));
+          const top = Math.round((t.start - this.SH * 60) * this.PXM + 1);
+          const fs = three ? 11 : 13;
+          const fs2 = three ? 11 : 11.5;
+          const narrow = three && o.n > 1;
+          const tall = h >= (three ? 46 : 40) && !narrow;
+          const lineH = fs * 1.25;
+          const left = (o.lane * 100 / o.n).toFixed(3);
+          const width = (100 / o.n).toFixed(3);
+          if (isSel) {
+            col.hasSel = true;
+            col.selLeft = left;
+            col.selWidth = width;
+            col.selHandleTop = top + h - 20;
+            col.rsDown = this.resizeStart(t);
+          }
+          return Object.assign(act(t, 'timeline'), {
+            top: top,
+            h: h,
+            z: isSel ? 2 : 1,
+            left: left,
+            width: width,
+            bg: P.bg,
+            bd: isSel ? '#FFFFFF' : P.bd,
+            shadow: isSel ? '0 8px 22px rgba(0,0,0,0.5)' : 'none',
+            tx: P.tx,
+            ring: P.dot,
+            fill: t.done ? P.dot : 'transparent',
+            done: t.done,
+            op: t.id === dragId ? 0.35 : t.done ? 0.55 : 1,
+            deco: t.done ? 'line-through' : 'none',
+            title: t.title,
+            time: three ? (isSel ? this.fmtDur(dur) : this.fmtT(t.start)) : this.fmtT(t.start) + '–' + this.fmtT(t.start + dur) + (isSel ? ' · ' + this.fmtDur(dur) : ''),
+            timeShort: isSel ? this.fmtDur(dur) : this.fmtT(t.start),
+            showTime: isSel || !three,
+            tall: tall,
+            short: !tall,
+            align: tall || (narrow && h >= 46) ? 'flex-start' : 'center',
+            fs: fs,
+            fs2: fs2,
+            cs: three ? 13 : 16,
+            hit: three ? 26 : 34,
+            hitPad: tall || (narrow && h >= 46) ? '1px 0 0 0' : '0',
+            hitAlign: tall || (narrow && h >= 46) ? 'flex-start' : 'center',
+            pad: tall ? (three ? '3px 4px 3px 0' : '5px 8px 5px 0') : (narrow && h >= 46 ? '4px 4px 0 0' : (three ? '0 4px 0 0' : '0 8px 0 0')),
+            lines: Math.max(1, Math.floor((h - (three ? 6 : 10) - fs2 - 6) / lineH)),
+            titleMax: Math.max(lineH, Math.floor((h - (three ? 6 : 10) - fs2 - 6) / lineH) * lineH).toFixed(1)
+          });
+        });
+        const chips = dayTasks.filter((t) => t.start === null).map((t) => {
+          const P = this.Q[t.q];
+          return Object.assign(act(t, 'allday'), {
+            title: t.title,
+            bg: P.bg,
+            bd: P.bd,
+            tx: P.tx,
+            ring: P.dot,
+            fill: t.done ? P.dot : 'transparent',
+            op: t.id === dragId ? 0.35 : t.done ? 0.55 : 1,
+            deco: t.done ? 'line-through' : 'none'
+          });
+        });
+        const pv = !!(drag && drag.over === 'col' && drag.day === day && drag.start !== null);
+        const hovH = !!(drag && drag.over === 'wday' && drag.day === day);
+        cols.push(Object.assign(col, {
+          blocks: blocks,
+          chips: chips,
+          colBg: pv ? 'rgba(62,224,166,0.04)' : 'transparent',
+          adBg: drag && drag.over === 'allday' && drag.day === day ? 'rgba(62,224,166,0.14)' : 'transparent',
+          pv: pv,
+          pvTop: pv ? Math.round((drag.start - this.SH * 60) * this.PXM + 1) : 0,
+          pvH: Math.round(Math.max(dDur * this.PXM - 2, 24)),
+          pvLabel: pv ? this.fmtT(drag.start) + '–' + this.fmtT(drag.start + dDur) : '',
+          now: day === 0,
+          nowTop: nowTop,
+          hWd: this.WD[dd.getDay()],
+          hNum: dd.getDate(),
+          hBg: hovH ? 'rgba(62,224,166,0.22)' : 'transparent',
+          hNumBg: day === 0 ? A : 'transparent',
+          hNumColor: day === 0 ? '#05261A' : '#F3F4F6',
+          hWdColor: day === 0 ? A : '#A1A1AA'
+        }));
+      }
+    }
+    const showNow = timeline && cols.some((c) => c.now);
+    const hours = [];
+    for (let H = this.SH; H < this.EH; H++) {
+      const top = (H - this.SH) * this.HOUR;
+      hours.push({ label: H + ':00', top: top, op: showNow && Math.abs(top - nowTop) < 22 ? 0 : 1 });
+    }
+
+    const groups = [];
+    if (list) {
+      for (let i = 0; i < 7; i++) {
+        const day = s.dayOffset + i;
+        const dd = this.date(day);
+        const items = vis
+          .filter((t) => t.day === day)
+          .sort((a, b) => (a.start === null ? -1 : a.start) - (b.start === null ? -1 : b.start))
+          .map((t) => {
+            const P = this.Q[t.q];
+            return Object.assign(act(t, 'list'), {
+              title: t.title,
+              time: t.start === null ? 'весь день' : this.fmtT(t.start),
+              meta: t.project || '',
+              ring: P.dot,
+              fill: t.done ? P.dot : 'transparent',
+              done: t.done,
+              op: t.id === dragId ? 0.35 : t.done ? 0.5 : 1,
+              deco: t.done ? 'line-through' : 'none'
+            });
+          });
+        const hov = !!(drag && drag.over === 'list' && drag.day === day);
+        groups.push({
+          day: day,
+          title: day === 0 ? 'Сегодня' : day === 1 ? 'Завтра' : this.cap(this.WDF[dd.getDay()]),
+          sub: dd.getDate() + ' ' + this.MG[dd.getMonth()],
+          items: items,
+          empty: items.length === 0,
+          bg: hov ? 'rgba(62,224,166,0.12)' : '#141518',
+          bd: hov ? A : 'rgba(255,255,255,0.05)',
+          hColor: day === 0 ? A : '#F3F4F6'
+        });
+      }
+    }
+
+    const quads = [];
+    if (matrix) {
+      const rank = (t) => (t.day !== null && t.day < 0 ? 0 : t.day !== null ? 1 : 2);
+      for (let q = 1; q <= 4; q++) {
+        const Qd = this.Q[q];
+        const items = s.tasks
+          .filter((t) => !t.done && t.q === q && !t.routine)
+          .sort((a, b) => rank(a) - rank(b) || (rank(a) === 2 ? b.seq - a.seq : (a.day - b.day) || ((a.start === null ? -1 : a.start) - (b.start === null ? -1 : b.start))))
+          .map((t) => {
+            const od = this.isOverdue(t);
+            let meta = 'бэклог';
+            if (od) meta = this.dayLabel(t.day) + (t.start === null ? '' : ' ' + this.fmtT(t.start));
+            else if (t.day !== null) meta = this.dayLabel(t.day) + (t.start === null ? '' : ' ' + this.fmtT(t.start));
+            return Object.assign(act(t, 'matrix'), {
+              title: t.title,
+              meta: meta,
+              metaColor: od ? '#FF7A70' : '#A1A1AA',
+              ring: Qd.dot,
+              op: t.id === dragId ? 0.35 : 1
+            });
+          });
+        const hov = !!(drag && drag.over === 'quad' && drag.quad === q);
+        quads.push({
+          q: q,
+          gc: q === 1 || q === 3 ? 2 : 3,
+          gr: q <= 2 ? 1 : 2,
+          name: Qd.name,
+          label: Qd.label,
+          dot: Qd.dot,
+          tx: Qd.tx,
+          bg: hov ? 'rgba(62,224,166,0.12)' : Qd.bg,
+          bd: hov ? A : Qd.bd,
+          count: items.length,
+          items: items,
+          empty: items.length === 0
+        });
+      }
+    }
+
+    const backlogT = s.tasks.filter((t) => t.day === null && (!t.done || s.showDone)).sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.seq - a.seq);
+    const backlogOpen = backlogT.filter((t) => !t.done).length;
+    const backlog = backlogT.map((t) => Object.assign(act(t, 'backlog'), {
+      title: t.title,
+      meta: t.done ? 'сделано' : this.fmtDur(t.dur || 30) + (t.project ? ' · ' + t.project : ''),
+      ring: this.Q[t.q].dot,
+      fill: t.done ? this.Q[t.q].dot : 'transparent',
+      deco: t.done ? 'line-through' : 'none',
+      op: t.id === dragId ? 0.35 : t.done ? 0.5 : 1
+    }));
+    const openH = this.openH(backlogT.length);
+    const drawerH = s.drawerH !== null ? Math.round(s.drawerH) : (s.drawerOpen ? openH : this.CLOSED);
+    const overBacklog = !!(drag && drag.over === 'backlog');
+    const fromTimeline = !!(dragTask && dragTask.day !== null);
+    let drawerHint = s.drawerOpen ? 'Свернуть' : 'Открыть';
+    if (overBacklog) drawerHint = fromTimeline ? 'Отпусти — уберу сюда' : 'Отпусти — оставлю здесь';
+    else if (drag && fromTimeline) drawerHint = 'Сюда — в бэклог';
+    else if (drag) drawerHint = 'Тащи наверх';
+
+    let gx = 0;
+    let gy = 0;
+    let gTitle = '';
+    let gMeta = '';
+    let gOk = false;
+    if (drag) {
+      gx = Math.round(Math.max(8, Math.min(drag.x - 40, 390 - 218)));
+      gy = Math.round(Math.max(6, drag.y - 72));
+      gTitle = dragTask ? dragTask.title : '';
+      gOk = true;
+      if (drag.over === 'col') gMeta = this.fmtT(drag.start) + '–' + this.fmtT(drag.start + dDur) + (three || !isDay ? ' · ' + this.dayLabel(drag.day) : '');
+      else if (drag.over === 'allday') gMeta = this.cap(this.dayLabel(drag.day)) + ' · весь день';
+      else if (drag.over === 'wday') gMeta = isDay && drag.day !== s.dayOffset ? 'Подержи — открою ' + this.dayLabel(drag.day) : 'На ' + this.dayLabel(drag.day);
+      else if (drag.over === 'list') gMeta = 'На ' + this.dayLabel(drag.day);
+      else if (drag.over === 'backlog') gMeta = 'В бэклог';
+      else if (drag.over === 'quad') gMeta = this.Q[drag.quad].name;
+      else { gMeta = matrix ? 'Тащи в нужный квадрант' : 'Тащи на нужное время'; gOk = false; }
+    }
+
+    const viewOpts = [['day', 'День'], ['three', '3 дня'], ['list', 'Неделя списком'], ['matrix', 'Матрица Эйзенхауэра']].map((v) => ({
+      label: v[1],
+      active: s.mode === v[0],
+      checked: s.mode === v[0] ? 'true' : 'false',
+      isDay: v[0] === 'day',
+      isThree: v[0] === 'three',
+      isList: v[0] === 'list',
+      isMatrix: v[0] === 'matrix',
+      bg: s.mode === v[0] ? 'rgba(62,224,166,0.12)' : 'transparent',
+      pick: () => this.setState({ mode: v[0], viewMenu: false, sel: null, resize: null })
+    }));
+
+    const vText = s.voiceOpen ? s.voiceText || '' : '';
+    const vr = vText ? this.interpret(vText) : { label: '', action: '', lines: [] };
+    const bars = [0, 0.12, 0.24, 0.36, 0.24, 0.12, 0, 0.18, 0.3].map((x) => ({ delay: x }));
+    const phrases = this.PHRASES.map((p) => ({ text: p, say: () => this.setState({ voiceText: p }) }));
+    const input = s.input || '';
+
+    return Object.assign({
+      titleMain: titleMain,
+      titleSub: titleSub,
+      hasOverdue: overdueCount > 0,
+      overdueCount: overdueCount,
+      overdueAria: 'Просрочено: ' + overdueCount,
+      todayNum: this.date(0).getDate(),
+      viewBtnBg: s.viewMenu ? '#2E2F35' : 'transparent',
+      viewMenuStr: s.viewMenu ? 'true' : 'false',
+      isDay: isDay,
+      isThree: three,
+      isList: list,
+      isMatrix: matrix,
+      isTimeline: timeline,
+      week: week,
+      cols: cols,
+      colCount: nCols,
+      hours: hours,
+      gridH: (this.EH - this.SH) * this.HOUR,
+      showNow: showNow,
+      nowTop: nowTop,
+      nowLabel: this.fmtT(this.NOW),
+      groups: groups,
+      quads: quads,
+      backlog: backlog,
+      backlogCount: backlogOpen,
+      backlogEmpty: backlogT.length === 0,
+      drawerH: drawerH,
+      drawerTr: s.drawerH !== null ? 'none' : 'height .28s cubic-bezier(.2,.8,.2,1), background .2s, border-color .2s',
+      drawerBg: overBacklog ? '#1B2A24' : '#17181B',
+      drawerBd: overBacklog ? A : 'rgba(255,255,255,0.06)',
+      drawerHint: drawerHint,
+      drawerHintColor: drag ? A : '#A1A1AA',
+      chevRot: s.drawerOpen ? 180 : 0,
+      drawerOpenStr: s.drawerOpen ? 'true' : 'false',
+      input: input,
+      hasInput: input.trim().length > 0,
+      noInput: input.trim().length === 0,
+      hasToast: !!s.toast,
+      toast: s.toast,
+      toastBottom: drawerH + 12,
+      dragging: !!drag,
+      gx: gx,
+      gy: gy,
+      gTitle: gTitle,
+      gMeta: gMeta,
+      gBd: gOk ? A : '#4A4B52',
+      gMetaColor: gOk ? A : '#A1A1AA',
+      viewMenu: s.viewMenu,
+      viewOpts: viewOpts,
+      swBg: s.showDone ? A : '#3A3B41',
+      swLeft: s.showDone ? 18 : 2,
+      showDoneStr: s.showDone ? 'true' : 'false',
+      overdueOpen: s.overdueOpen,
+      moveOpen: s.moveOpen,
+      moveOpenStr: s.moveOpen ? 'true' : 'false',
+      moveBtnBg: s.moveOpen ? '#A93832' : '#C8433C',
+      moveHint: 'с ' + this.fmtT(Math.ceil(this.NOW / 15) * 15) + ', важные — первыми',
+      overdue: overdue,
+      overdueEmpty: overdue.length === 0,
+      voiceOpen: s.voiceOpen,
+      voiceListen: !vText,
+      voiceResult: !!vText,
+      voiceText: vText,
+      vr: vr,
+      bars: bars,
+      phrases: phrases
+    }, this.h);
+  }
+}
+</script>
+</body>
+</html>

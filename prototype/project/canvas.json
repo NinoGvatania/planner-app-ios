@@ -1,0 +1,34 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-18T19:20:00Z" },
+  "title": "Прототип планировщика",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 844, "title": "День", "is_interactive": true, "radius": 36 },
+    "ThreeDays.dc.html": { "x": 470, "y": 0, "w": 390, "h": 844, "title": "3 дня", "is_interactive": true, "radius": 36 },
+    "List.dc.html": { "x": 940, "y": 0, "w": 390, "h": 844, "title": "Неделя списком", "is_interactive": true, "radius": 36 },
+    "Matrix.dc.html": { "x": 1410, "y": 0, "w": 390, "h": 844, "title": "Матрица Эйзенхауэра", "is_interactive": true, "radius": 36 },
+    "Backlog.dc.html": { "x": 0, "y": 1264, "w": 390, "h": 844, "title": "Бэклог открыт", "is_interactive": true, "radius": 36 },
+    "Drag.dc.html": { "x": 470, "y": 1264, "w": 390, "h": 844, "title": "Перетаскивание на время", "is_interactive": true, "radius": 36 },
+    "Resize.dc.html": { "x": 940, "y": 1264, "w": 390, "h": 844, "title": "Тап по задаче: растянуть", "is_interactive": true, "radius": 36 },
+    "Overdue.dc.html": { "x": 1410, "y": 1264, "w": 390, "h": 844, "title": "Просрочено", "is_interactive": true, "radius": 36 },
+    "Voice.dc.html": { "x": 1880, "y": 1264, "w": 390, "h": 844, "title": "Голос", "is_interactive": true, "radius": 36 }
+  },
+  "order": [
+    "Main.dc.html",
+    "ThreeDays.dc.html",
+    "List.dc.html",
+    "Matrix.dc.html",
+    "Backlog.dc.html",
+    "Drag.dc.html",
+    "Resize.dc.html",
+    "Overdue.dc.html",
+    "Voice.dc.html"
+  ],
+  "notes": {
+    "row1": { "x": 0, "y": -300, "text": "Один экран: день, 3 дня, неделя, матрица", "kind": "title1", "maxW": 1800 },
+    "row2": { "x": 0, "y": 964, "text": "Бэклог, перетаскивание, растягивание, просрочка, голос", "kind": "title1", "maxW": 2270 }
+  },
+  "designSystems": []
+}

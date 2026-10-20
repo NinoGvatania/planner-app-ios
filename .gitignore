@@ -1,0 +1,21 @@
+# Xcode
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Прототип: рантайм холста не хранится в репозитории
+prototype/harness/support.js
+prototype/harness/out*/
+
+# Система
+.DS_Store
