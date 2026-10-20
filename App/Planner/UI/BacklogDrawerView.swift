@@ -16,6 +16,8 @@ struct BacklogDrawerView: View {
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
+    /// Только что был свайп — следующий тап кнопки заголовка игнорируется.
+    @State private var swiped = false
 
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
     private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * 50 + 8 }
@@ -58,6 +60,40 @@ struct BacklogDrawerView: View {
     }
 
     private var header: some View {
+        Button {
+            if swiped { swiped = false; return }
+            isOpen.toggle()
+        } label: {
+            headerContent
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 10)
+                .onChanged { value in
+                    dragDelta = value.translation.height
+                }
+                .onEnded { value in
+                    let dy = value.translation.height
+                    let projected = value.predictedEndTranslation.height
+                    if dy < -40 || projected < -80 {
+                        isOpen = true
+                    } else if dy > 40 || projected > 80 {
+                        isOpen = false
+                    } else {
+                        isOpen = height > (Tokens.drawerCollapsed + openHeight) / 2
+                    }
+                    dragDelta = 0
+                    swiped = true
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(0.4))
+                        swiped = false
+                    }
+                }
+        )
+        .accessibilityLabel(isOpen ? "Свернуть бэклог" : "Открыть бэклог")
+    }
+
+    private var headerContent: some View {
         VStack(spacing: 8) {
             Capsule()
                 .fill(Color(hex: 0x3A3B41))
@@ -90,27 +126,6 @@ struct BacklogDrawerView: View {
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .foregroundStyle(Tokens.text)
-        .onTapGesture { isOpen.toggle() }
-        .gesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { value in
-                    dragDelta = value.translation.height
-                }
-                .onEnded { value in
-                    let dy = value.translation.height
-                    let projected = value.predictedEndTranslation.height
-                    if dy < -40 || projected < -80 {
-                        isOpen = true
-                    } else if dy > 40 || projected > 80 {
-                        isOpen = false
-                    } else {
-                        isOpen = height > (Tokens.drawerCollapsed + openHeight) / 2
-                    }
-                    dragDelta = 0
-                }
-        )
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(isOpen ? "Свернуть бэклог" : "Открыть бэклог")
     }
 
     private var list: some View {

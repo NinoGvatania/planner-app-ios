@@ -285,8 +285,9 @@ struct PlannerScreen: View {
         let overdue = overdueTasks
         guard !overdue.isEmpty else { showOverdue = false; return }
         let day = DayMath.day(offset: target)
+        let overdueIDs = Set(overdue.map { $0.id })
         let busy = tasks
-            .filter { $0.day == day && $0.start != nil && !overdue.contains { o in o.id == $0.id } }
+            .filter { task in task.day == day && task.start != nil && !overdueIDs.contains(task.id) }
             .map { BusyInterval(start: $0.start ?? 0, end: ($0.start ?? 0) + $0.duration) }
         let candidates = overdue.map {
             SchedulingCandidate(id: $0.id.uuidString, duration: $0.duration, quadrant: $0.quadrant,
