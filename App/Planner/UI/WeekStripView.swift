@@ -1,15 +1,18 @@
 import SwiftUI
 
-/// Полоска недели: 7 вкладок начиная с сегодняшнего дня.
+/// Полоска недели: 7 вкладок начиная с сегодняшнего дня. Каждая вкладка — зона сброса.
 struct WeekStripView: View {
     @Binding var dayOffset: Int
     let hasTasks: (Int) -> Bool
+    /// Вкладка, над которой сейчас держат перетаскиваемую задачу.
+    var hoveredOffset: Int? = nil
 
     var body: some View {
         HStack(spacing: 4) {
             ForEach(0..<7, id: \.self) { offset in
                 let date = DayMath.day(offset: offset)
                 let selected = offset == dayOffset
+                let hovered = hoveredOffset == offset && !selected
                 Button {
                     dayOffset = offset
                 } label: {
@@ -26,9 +29,13 @@ struct WeekStripView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
-                    .background(selected ? Tokens.accent : Color.clear, in: RoundedRectangle(cornerRadius: 14))
+                    .background(
+                        selected ? Tokens.accent : (hovered ? Tokens.accent.opacity(0.22) : Color.clear),
+                        in: RoundedRectangle(cornerRadius: 14)
+                    )
                 }
                 .buttonStyle(.plain)
+                .reportZone("tab-\(offset)")
                 .accessibilityLabel(DayMath.accessibilityLabel(offset: offset))
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
@@ -36,5 +43,6 @@ struct WeekStripView: View {
         .padding(.horizontal, 12)
         .padding(.top, 2)
         .padding(.bottom, 6)
+        .animation(.easeOut(duration: 0.15), value: hoveredOffset)
     }
 }

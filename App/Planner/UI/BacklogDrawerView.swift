@@ -10,6 +10,9 @@ struct BacklogDrawerView: View {
     let onSubmit: () -> Void
     let onVoice: () -> Void
     let onToggle: (PlannerTask) -> Void
+    let drag: DragState?
+    let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
+    let onDragEnded: () -> Void
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
@@ -17,6 +20,12 @@ struct BacklogDrawerView: View {
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
     private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * 50 + 8 }
     private var openHeight: CGFloat { Tokens.drawerCollapsed + listHeight }
+
+    private var hint: String {
+        guard let drag = drag else { return isOpen ? "Свернуть" : "Открыть" }
+        if drag.target == .backlog { return drag.fromTimeline ? "Отпусти — уберу сюда" : "Отпусти — оставлю здесь" }
+        return drag.fromTimeline ? "Сюда — в бэклог" : "Тащи наверх"
+    }
 
     private var height: CGFloat {
         let base = isOpen ? openHeight : Tokens.drawerCollapsed
@@ -33,9 +42,10 @@ struct BacklogDrawerView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: height)
+        .reportZone("drawer")
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
-                .fill(Tokens.drawer)
+                .fill(drag?.target == .backlog ? Color(hex: 0x1B2A24) : Tokens.drawer)
                 .shadow(color: Color.black.opacity(0.45), radius: 15, y: -10)
                 .ignoresSafeArea(edges: .bottom)
         }
@@ -65,13 +75,13 @@ struct BacklogDrawerView: View {
                 }
                 Spacer()
                 HStack(spacing: 4) {
-                    Text(isOpen ? "Свернуть" : "Открыть")
+                    Text(hint)
                     Image(systemName: "chevron.up")
                         .font(.system(size: 13, weight: .semibold))
                         .rotationEffect(.degrees(isOpen ? 180 : 0))
                 }
                 .font(.system(size: 13))
-                .foregroundStyle(Tokens.caption)
+                .foregroundStyle(drag == nil ? Tokens.caption : Tokens.accent)
             }
         }
         .padding(.horizontal, 18)
@@ -153,8 +163,19 @@ struct BacklogDrawerView: View {
                 .padding(.trailing, 4)
         }
         .frame(height: 50)
-        .opacity(task.isDone ? 0.5 : 1)
+        .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .foregroundStyle(Tokens.text)
+        .contentShape(Rectangle())
+        .gesture(
+            LongPressGesture(minimumDuration: 0.3)
+                .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
+                .onChanged { value in
+                    if case .second(true, let dragValue?) = value {
+                        onDragChanged(task, dragValue.location, dragValue.startLocation)
+                    }
+                }
+                .onEnded { _ in onDragEnded() }
+        )
     }
 
     private var inputRow: some View {

@@ -1,11 +1,20 @@
 import PlannerCore
 import SwiftUI
 
-/// Лист «Просрочено»: список с галочками. Кнопка «Перенести» — следующий шаг этапа 1.
+/// Лист «Просрочено»: список с галочками и «Перенести» — на сегодня в свободные окна, на завтра, в бэклог.
 struct OverdueSheet: View {
     let tasks: [PlannerTask]
     let onToggle: (PlannerTask) -> Void
+    let onFitToday: () -> Void
+    let onFitTomorrow: () -> Void
+    let onToBacklog: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var moveOpen = false
+
+    private var fromLabel: String {
+        let next = Int((Double(DayMath.nowMinutes()) / 15).rounded(.up)) * 15
+        return "с " + ClockGrid.format(minutes: min(next, ClockGrid.dayEnd)) + ", важные — первыми"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,21 +34,59 @@ struct OverdueSheet: View {
                     .font(.system(size: 17, weight: .bold))
                     .frame(maxWidth: .infinity)
                 Button {
-                    // Перенос по свободным окнам появится следующим шагом.
+                    withAnimation(.easeOut(duration: 0.2)) { moveOpen.toggle() }
                 } label: {
                     Text("Перенести")
                         .font(.system(size: 15, weight: .bold))
                         .padding(.horizontal, 16)
                         .frame(height: Tokens.hitTarget)
-                        .background(Color(hex: 0xC8433C), in: Capsule())
+                        .background(moveOpen ? Color(hex: 0xA93832) : Color(hex: 0xC8433C), in: Capsule())
                         .foregroundStyle(.white)
                 }
-                .disabled(true)
-                .opacity(0.5)
+                .disabled(tasks.isEmpty)
             }
             .padding(.horizontal, 12)
             .padding(.top, 6)
             .padding(.bottom, 12)
+
+            if moveOpen {
+                VStack(spacing: 8) {
+                    Button(action: onFitToday) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("На сегодня — в свободные окна")
+                                .font(.system(size: 15, weight: .bold))
+                            Text(fromLabel)
+                                .font(.system(size: 12))
+                                .opacity(0.8)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 54)
+                        .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
+                        .foregroundStyle(Tokens.onAccent)
+                    }
+                    HStack(spacing: 8) {
+                        Button(action: onFitTomorrow) {
+                            Text("На завтра")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: Tokens.hitTarget)
+                                .background(Color(hex: 0x2F3036), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        Button(action: onToBacklog) {
+                            Text("В бэклог")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: Tokens.hitTarget)
+                                .background(Color(hex: 0x2F3036), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Tokens.field, in: RoundedRectangle(cornerRadius: 18))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
 
             ScrollView {
                 VStack(spacing: 0) {

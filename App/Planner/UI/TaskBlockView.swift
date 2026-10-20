@@ -7,15 +7,29 @@ struct TaskBlockView: View {
     let height: CGFloat
     /// Узкая колонка (3 дня или несколько параллельных задач).
     let compact: Bool
+    var selected: Bool = false
+    /// Длительность во время растягивания (иначе — из задачи).
+    var liveDuration: Int? = nil
+    var dimmed: Bool = false
     let onToggle: () -> Void
 
+    private var duration: Int { liveDuration ?? task.duration }
     private var tall: Bool { height >= (compact ? 46 : 40) }
     private var titleSize: CGFloat { compact ? 11 : 13 }
     private var timeSize: CGFloat { compact ? 11 : 11.5 }
 
-    private var timeRange: String {
+    private var timeText: String {
         guard let start = task.start else { return "" }
-        return ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + task.duration)
+        if compact {
+            return selected ? ClockGrid.formatDuration(duration) : ClockGrid.format(minutes: start)
+        }
+        let range = ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + duration)
+        return selected ? range + " · " + ClockGrid.formatDuration(duration) : range
+    }
+
+    private var shortTimeText: String {
+        guard let start = task.start else { return "" }
+        return selected ? ClockGrid.formatDuration(duration) : ClockGrid.format(minutes: start)
     }
 
     private var lines: Int {
@@ -52,7 +66,7 @@ struct TaskBlockView: View {
                         .font(.system(size: titleSize, weight: .semibold))
                         .lineLimit(lines)
                         .strikethrough(task.isDone)
-                    Text(compact ? ClockGrid.format(minutes: task.start ?? 0) : timeRange)
+                    Text(timeText)
                         .font(.system(size: timeSize))
                         .monospacedDigit()
                         .opacity(0.8)
@@ -66,9 +80,9 @@ struct TaskBlockView: View {
                         .font(.system(size: titleSize, weight: .semibold))
                         .lineLimit(1)
                         .strikethrough(task.isDone)
-                    if !compact {
+                    if !compact || selected {
                         Spacer(minLength: 0)
-                        Text(ClockGrid.format(minutes: task.start ?? 0))
+                        Text(shortTimeText)
                             .font(.system(size: timeSize))
                             .monospacedDigit()
                             .opacity(0.8)
@@ -82,8 +96,9 @@ struct TaskBlockView: View {
         .frame(height: height)
         .foregroundStyle(style.text)
         .background(style.background, in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(style.border, lineWidth: 1.5))
-        .opacity(task.isDone ? 0.55 : 1)
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Color.white : style.border, lineWidth: 1.5))
+        .shadow(color: Color.black.opacity(selected ? 0.5 : 0), radius: 11, y: 8)
+        .opacity(dimmed ? 0.35 : (task.isDone ? 0.55 : 1))
         .clipped()
     }
 }

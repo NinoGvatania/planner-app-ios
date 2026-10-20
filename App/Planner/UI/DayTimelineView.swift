@@ -2,17 +2,30 @@ import PlannerCore
 import SwiftUI
 
 /// Строка «весь день» и сетка 0:00–24:00 одного дня.
+/// Тап по блоку выделяет его, ручка снизу растягивает, удержание начинает перетаскивание.
 struct DayTimelineView: View {
     let timed: [PlannerTask]
     let allDay: [PlannerTask]
     let showNow: Bool
+    @Binding var selectedID: UUID?
+    let drag: DragState?
     let onToggle: (PlannerTask) -> Void
+    let onResize: (PlannerTask, Int) -> Void
+    /// (задача, где палец, где палец был в начале) в координатах «planner».
+    let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
+    let onDragEnded: () -> Void
+
+    @State private var liveDuration: Int?
 
     private let topInset: CGFloat = 10
     private let gridHeight = 24 * Tokens.hourHeight
 
+    private func duration(of task: PlannerTask) -> Int {
+        task.id == selectedID ? (liveDuration ?? task.duration) : task.duration
+    }
+
     private var placements: [String: LanePlacement] {
-        let items = timed.map { LayoutItem(id: $0.id.uuidString, start: $0.start ?? 0, duration: $0.duration) }
+        let items = timed.map { LayoutItem(id: $0.id.uuidString, start: $0.start ?? 0, duration: duration(of: $0)) }
         var result: [String: LanePlacement] = [:]
         for placement in DayLayout.lanes(for: items) {
             result[placement.id] = placement
@@ -23,6 +36,7 @@ struct DayTimelineView: View {
     var body: some View {
         VStack(spacing: 0) {
             allDayRow
+                .reportZone("allday")
             Rectangle().fill(Tokens.line).frame(height: 1)
             GeometryReader { geometry in
                 let areaWidth = max(0, geometry.size.width - Tokens.gutter - 8)
@@ -31,6 +45,7 @@ struct DayTimelineView: View {
                         TimelineView(.everyMinute) { _ in
                             grid(areaWidth: areaWidth)
                         }
+                        .reportZone("grid")
                     }
                     .onAppear {
                         let hour = max(0, min(23, DayMath.nowMinutes() / 60 - 1))
@@ -40,13 +55,16 @@ struct DayTimelineView: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { selectedID = nil }
         }
     }
 
     // MARK: - Весь день
 
     private var allDayRow: some View {
-        HStack(alignment: .top, spacing: 0) {
+        let hovered = drag?.target == .allDay
+        return HStack(alignment: .top, spacing: 0) {
             Text("весь\nдень")
                 .font(.system(size: 11))
                 .foregroundStyle(Tokens.muted)
@@ -62,6 +80,7 @@ struct DayTimelineView: View {
             .padding(.horizontal, 3)
             .padding(.vertical, 6)
             .padding(.leading, 7)
+            .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
             .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
         }
         .padding(.trailing, 8)
@@ -91,7 +110,9 @@ struct DayTimelineView: View {
         .foregroundStyle(style.text)
         .background(style.background, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style.border, lineWidth: 1))
-        .opacity(task.isDone ? 0.55 : 1)
+        .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.55 : 1))
+        .contentShape(Rectangle())
+        .gesture(dragGesture(for: task))
     }
 
     // MARK: - Сетка
@@ -100,7 +121,6 @@ struct DayTimelineView: View {
         let nowMinutes = DayMath.nowMinutes()
         let nowTop = topInset + CGFloat(nowMinutes) / 60 * Tokens.hourHeight
         return ZStack(alignment: .topLeading) {
-            // Часы: настоящие строки по 56 pt, чтобы прокрутка к часу работала.
             VStack(spacing: 0) {
                 ForEach(0..<24, id: \.self) { hour in
                     let top = topInset + CGFloat(hour) * Tokens.hourHeight
@@ -119,22 +139,17 @@ struct DayTimelineView: View {
 
             ForEach(timed, id: \.id) { task in
                 if let placement = placements[task.id.uuidString] {
-                    let laneWidth = areaWidth / CGFloat(placement.laneCount)
-                    let width = max(0, laneWidth - 6)
-                    let top = topInset + CGFloat(task.start ?? 0) / 60 * Tokens.hourHeight + 1
-                    let height = max(CGFloat(task.duration) / 60 * Tokens.hourHeight - 2, 24)
-                    TaskBlockView(
-                        task: task,
-                        height: height,
-                        compact: laneWidth < 160,
-                        onToggle: { onToggle(task) }
-                    )
-                    .frame(width: width, height: height)
-                    .position(
-                        x: Tokens.gutter + laneWidth * CGFloat(placement.lane) + 3 + width / 2,
-                        y: top + height / 2
-                    )
+                    block(task, placement: placement, areaWidth: areaWidth)
                 }
+            }
+
+            if let drag = drag, case .grid(let start) = drag.target {
+                let height = max(CGFloat(drag.duration) / 60 * Tokens.hourHeight - 2, 24)
+                let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
+                dropPreview(start: start, duration: drag.duration)
+                    .frame(width: areaWidth - 6, height: height)
+                    .position(x: Tokens.gutter + 3 + (areaWidth - 6) / 2, y: top + height / 2)
+                    .allowsHitTesting(false)
             }
 
             if showNow {
@@ -144,6 +159,97 @@ struct DayTimelineView: View {
             }
         }
         .padding(.trailing, 8)
+        .coordinateSpace(name: "grid")
+    }
+
+    private func block(_ task: PlannerTask, placement: LanePlacement, areaWidth: CGFloat) -> some View {
+        let laneWidth = areaWidth / CGFloat(placement.laneCount)
+        let width = max(0, laneWidth - 6)
+        let start = task.start ?? 0
+        let dur = duration(of: task)
+        let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
+        let height = max(CGFloat(dur) / 60 * Tokens.hourHeight - 2, 24)
+        let selected = task.id == selectedID && drag == nil
+        let left = Tokens.gutter + laneWidth * CGFloat(placement.lane) + 3
+        return ZStack(alignment: .topLeading) {
+            TaskBlockView(
+                task: task,
+                height: height,
+                compact: laneWidth < 160,
+                selected: selected,
+                liveDuration: selected ? liveDuration : nil,
+                dimmed: drag?.taskID == task.id,
+                onToggle: { onToggle(task) }
+            )
+            .frame(width: width, height: height)
+            .position(x: left + width / 2, y: top + height / 2)
+            .zIndex(selected ? 2 : 1)
+            .onTapGesture {
+                selectedID = selectedID == task.id ? nil : task.id
+                liveDuration = nil
+            }
+            .gesture(dragGesture(for: task))
+
+            if selected {
+                resizeHandle(task, start: start, top: top, height: height, centerX: left + width / 2)
+                    .zIndex(3)
+            }
+        }
+    }
+
+    private func resizeHandle(_ task: PlannerTask, start: Int, top: CGFloat, height: CGFloat, centerX: CGFloat) -> some View {
+        Capsule()
+            .fill(Color.white)
+            .frame(width: 44, height: 6)
+            .overlay(Capsule().stroke(Tokens.background, lineWidth: 2))
+            .frame(width: 88, height: 40)
+            .contentShape(Rectangle())
+            .position(x: centerX, y: top + height)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("grid"))
+                    .onChanged { value in
+                        let bottom = value.location.y - topInset
+                        let minutes = Int((bottom / Tokens.hourHeight * 60 / 15).rounded()) * 15
+                        let newDuration = max(15, min(minutes - start, ClockGrid.dayEnd - start))
+                        if newDuration != liveDuration { liveDuration = newDuration }
+                    }
+                    .onEnded { _ in
+                        if let value = liveDuration, value != task.duration {
+                            onResize(task, value)
+                        }
+                        liveDuration = nil
+                    }
+            )
+            .accessibilityHidden(true)
+    }
+
+    private func dragGesture(for task: PlannerTask) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.3)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
+            .onChanged { value in
+                if case .second(true, let dragValue?) = value {
+                    onDragChanged(task, dragValue.location, dragValue.startLocation)
+                }
+            }
+            .onEnded { _ in onDragEnded() }
+    }
+
+    private func dropPreview(start: Int, duration: Int) -> some View {
+        RoundedRectangle(cornerRadius: 9)
+            .fill(Tokens.accent.opacity(0.14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .foregroundStyle(Tokens.accent)
+            )
+            .overlay(alignment: .topLeading) {
+                Text(ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + duration))
+                    .font(.system(size: 12, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Tokens.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 3)
+            }
     }
 
     private func hourRow(_ hour: Int, hideLabel: Bool) -> some View {
