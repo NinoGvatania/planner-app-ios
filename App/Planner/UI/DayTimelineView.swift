@@ -8,6 +8,7 @@ struct DayTimelineView: View {
     let showNow: Bool
     let onToggle: (PlannerTask) -> Void
 
+    private let topInset: CGFloat = 10
     private let gridHeight = 24 * Tokens.hourHeight
 
     private var placements: [String: LanePlacement] {
@@ -24,22 +25,25 @@ struct DayTimelineView: View {
             allDayRow
             Rectangle().fill(Tokens.line).frame(height: 1)
             GeometryReader { geometry in
-                let areaWidth = geometry.size.width - Tokens.gutter - 8
+                let areaWidth = max(0, geometry.size.width - Tokens.gutter - 8)
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
-                        TimelineView(.everyMinute) { context in
-                            grid(areaWidth: areaWidth, now: context.date)
+                        TimelineView(.everyMinute) { _ in
+                            grid(areaWidth: areaWidth)
                         }
-                        .frame(height: gridHeight + 36)
                     }
                     .onAppear {
                         let hour = max(0, min(23, DayMath.nowMinutes() / 60 - 1))
-                        proxy.scrollTo("hour-\(hour)", anchor: .top)
+                        DispatchQueue.main.async {
+                            proxy.scrollTo("hour-\(hour)", anchor: .top)
+                        }
                     }
                 }
             }
         }
     }
+
+    // MARK: - Весь день
 
     private var allDayRow: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -90,40 +94,34 @@ struct DayTimelineView: View {
         .opacity(task.isDone ? 0.55 : 1)
     }
 
-    private func grid(areaWidth: CGFloat, now: Date) -> some View {
+    // MARK: - Сетка
+
+    private func grid(areaWidth: CGFloat) -> some View {
         let nowMinutes = DayMath.nowMinutes()
-        let nowTop = CGFloat(nowMinutes) / 60 * Tokens.hourHeight
+        let nowTop = topInset + CGFloat(nowMinutes) / 60 * Tokens.hourHeight
         return ZStack(alignment: .topLeading) {
-            ForEach(0..<24, id: \.self) { hour in
-                let top = CGFloat(hour) * Tokens.hourHeight
-                let nearNow = showNow && abs(top - nowTop) < 22
-                HStack(spacing: 0) {
-                    Text("\(hour):00")
-                        .font(.system(size: 11))
-                        .monospacedDigit()
-                        .foregroundStyle(Tokens.muted)
-                        .frame(width: Tokens.gutter - 8, alignment: .trailing)
-                        .opacity(nearNow ? 0 : 1)
-                        .offset(y: -7)
-                    Rectangle()
-                        .fill(Tokens.line)
-                        .frame(height: 1)
-                        .padding(.leading, 8)
+            // Часы: настоящие строки по 56 pt, чтобы прокрутка к часу работала.
+            VStack(spacing: 0) {
+                ForEach(0..<24, id: \.self) { hour in
+                    let top = topInset + CGFloat(hour) * Tokens.hourHeight
+                    hourRow(hour, hideLabel: showNow && abs(top - nowTop) < 22)
+                        .frame(height: Tokens.hourHeight)
+                        .id("hour-\(hour)")
                 }
-                .frame(height: 1)
-                .offset(y: top + 10)
-                .id("hour-\(hour)")
             }
+            .padding(.top, topInset)
+            .padding(.bottom, 26)
 
             Rectangle()
                 .fill(Tokens.line)
                 .frame(width: 1, height: gridHeight)
-                .offset(x: Tokens.gutter, y: 10)
+                .position(x: Tokens.gutter + 0.5, y: topInset + gridHeight / 2)
 
             ForEach(timed, id: \.id) { task in
                 if let placement = placements[task.id.uuidString] {
                     let laneWidth = areaWidth / CGFloat(placement.laneCount)
-                    let top = CGFloat(task.start ?? 0) / 60 * Tokens.hourHeight + 1
+                    let width = max(0, laneWidth - 6)
+                    let top = topInset + CGFloat(task.start ?? 0) / 60 * Tokens.hourHeight + 1
                     let height = max(CGFloat(task.duration) / 60 * Tokens.hourHeight - 2, 24)
                     TaskBlockView(
                         task: task,
@@ -131,29 +129,52 @@ struct DayTimelineView: View {
                         compact: laneWidth < 160,
                         onToggle: { onToggle(task) }
                     )
-                    .frame(width: laneWidth - 6, height: height)
-                    .offset(x: Tokens.gutter + laneWidth * CGFloat(placement.lane) + 3, y: top + 10)
+                    .frame(width: width, height: height)
+                    .position(
+                        x: Tokens.gutter + laneWidth * CGFloat(placement.lane) + 3 + width / 2,
+                        y: top + height / 2
+                    )
                 }
             }
 
             if showNow {
-                HStack(spacing: 0) {
-                    Text(ClockGrid.format(minutes: nowMinutes))
-                        .font(.system(size: 11, weight: .bold))
-                        .monospacedDigit()
-                        .foregroundStyle(Tokens.accent)
-                        .frame(width: Tokens.gutter - 4, alignment: .trailing)
-                        .offset(y: -8)
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(Tokens.accent).frame(height: 2)
-                        Circle().fill(Tokens.accent).frame(width: 10, height: 10).offset(x: -1)
-                    }
-                }
-                .frame(height: 2)
-                .offset(y: nowTop + 10)
-                .allowsHitTesting(false)
+                nowLine(minutes: nowMinutes, areaWidth: areaWidth)
+                    .position(x: (Tokens.gutter + 8 + areaWidth) / 2, y: nowTop)
+                    .allowsHitTesting(false)
             }
         }
         .padding(.trailing, 8)
+    }
+
+    private func hourRow(_ hour: Int, hideLabel: Bool) -> some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Tokens.line)
+                .frame(height: 1)
+                .padding(.leading, Tokens.gutter)
+            Text("\(hour):00")
+                .font(.system(size: 11))
+                .monospacedDigit()
+                .foregroundStyle(Tokens.muted)
+                .frame(width: Tokens.gutter - 8, alignment: .trailing)
+                .offset(y: -7)
+                .opacity(hideLabel ? 0 : 1)
+        }
+    }
+
+    private func nowLine(minutes: Int, areaWidth: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Text(ClockGrid.format(minutes: minutes))
+                .font(.system(size: 11, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(Tokens.accent)
+                .frame(width: Tokens.gutter - 4, alignment: .trailing)
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Tokens.accent).frame(height: 2)
+                Circle().fill(Tokens.accent).frame(width: 10, height: 10).offset(x: -1)
+            }
+            .padding(.leading, 4)
+        }
+        .frame(width: Tokens.gutter + 8 + areaWidth, height: 12)
     }
 }

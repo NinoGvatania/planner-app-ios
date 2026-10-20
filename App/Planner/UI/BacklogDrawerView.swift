@@ -2,6 +2,7 @@ import PlannerCore
 import SwiftUI
 
 /// Панель бэклога снизу: заголовок (тап/свайп открывает), список, строка быстрого ввода.
+/// Высота панели явная: 130 pt свёрнутая, при свайпе тянется за пальцем.
 struct BacklogDrawerView: View {
     let tasks: [PlannerTask]
     @Binding var isOpen: Bool
@@ -10,79 +11,96 @@ struct BacklogDrawerView: View {
     let onVoice: () -> Void
     let onToggle: (PlannerTask) -> Void
 
-    @State private var dragOffset: CGFloat = 0
+    /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
+    @State private var dragDelta: CGFloat = 0
 
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
     private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * 50 + 8 }
+    private var openHeight: CGFloat { Tokens.drawerCollapsed + listHeight }
+
+    private var height: CGFloat {
+        let base = isOpen ? openHeight : Tokens.drawerCollapsed
+        return min(openHeight, max(Tokens.drawerCollapsed, base - dragDelta))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            if isOpen {
-                list
-            }
+            list
+                .frame(height: max(0, height - Tokens.drawerCollapsed))
+                .clipped()
             inputRow
         }
         .frame(maxWidth: .infinity)
-        .background(Tokens.drawer)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22))
+        .frame(height: height)
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
+                .fill(Tokens.drawer)
+                .shadow(color: Color.black.opacity(0.45), radius: 15, y: -10)
+                .ignoresSafeArea(edges: .bottom)
+        }
         .overlay(alignment: .top) {
             UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
         }
-        .shadow(color: Color.black.opacity(0.45), radius: 15, y: -10)
         .animation(.spring(duration: 0.28), value: isOpen)
+        .animation(.interactiveSpring(), value: dragDelta)
     }
 
     private var header: some View {
-        Button {
-            isOpen.toggle()
-        } label: {
-            VStack(spacing: 8) {
-                Capsule()
-                    .fill(Color(hex: 0x3A3B41))
-                    .frame(width: 38, height: 5)
-                HStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        Text("Бэклог")
-                            .font(.system(size: 17, weight: .bold))
-                        Text("\(openCount)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(hex: 0xC9C9D1))
-                            .frame(minWidth: 22, minHeight: 22)
-                            .padding(.horizontal, 3)
-                            .background(Tokens.badge, in: Capsule())
-                    }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Text(isOpen ? "Свернуть" : "Открыть")
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 13, weight: .semibold))
-                            .rotationEffect(.degrees(isOpen ? 180 : 0))
-                    }
-                    .font(.system(size: 13))
-                    .foregroundStyle(Tokens.caption)
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(Color(hex: 0x3A3B41))
+                .frame(width: 38, height: 5)
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("Бэклог")
+                        .font(.system(size: 17, weight: .bold))
+                    Text("\(openCount)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xC9C9D1))
+                        .frame(minWidth: 22, minHeight: 22)
+                        .padding(.horizontal, 3)
+                        .background(Tokens.badge, in: Capsule())
                 }
+                Spacer()
+                HStack(spacing: 4) {
+                    Text(isOpen ? "Свернуть" : "Открыть")
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 13, weight: .semibold))
+                        .rotationEffect(.degrees(isOpen ? 180 : 0))
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Tokens.caption)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 7)
-            .frame(height: 52, alignment: .top)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 18)
+        .padding(.top, 7)
+        .frame(height: 52, alignment: .top)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
         .foregroundStyle(Tokens.text)
-        .accessibilityLabel(isOpen ? "Свернуть бэклог" : "Открыть бэклог")
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 12)
+        .onTapGesture { isOpen.toggle() }
+        .gesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    dragDelta = value.translation.height
+                }
                 .onEnded { value in
-                    if value.translation.height < -40 {
+                    let dy = value.translation.height
+                    let projected = value.predictedEndTranslation.height
+                    if dy < -40 || projected < -80 {
                         isOpen = true
-                    } else if value.translation.height > 40 {
+                    } else if dy > 40 || projected > 80 {
                         isOpen = false
+                    } else {
+                        isOpen = height > (Tokens.drawerCollapsed + openHeight) / 2
                     }
+                    dragDelta = 0
                 }
         )
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(isOpen ? "Свернуть бэклог" : "Открыть бэклог")
     }
 
     private var list: some View {
@@ -103,7 +121,7 @@ struct BacklogDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.bottom, 6)
         }
-        .frame(height: listHeight)
+        .frame(height: listHeight, alignment: .top)
     }
 
     private func row(_ task: PlannerTask) -> some View {
@@ -173,7 +191,7 @@ struct BacklogDrawerView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .frame(height: 76, alignment: .top)
+        .frame(height: 78, alignment: .top)
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1) }
     }
 }
