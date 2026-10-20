@@ -21,6 +21,8 @@ struct PlannerScreen: View {
     @State private var zones: [String: CGRect] = [:]
     @State private var springTask: Task<Void, Never>?
     @State private var springOffset: Int?
+    @State private var namingTask: PlannerTask?
+    @State private var newTitle = ""
 
     private let gridTopInset: CGFloat = 10
 
@@ -73,7 +75,8 @@ struct PlannerScreen: View {
                     onToggle: toggleDone,
                     onResize: resize,
                     onDragChanged: dragChanged,
-                    onDragEnded: dragEnded
+                    onDragEnded: dragEnded,
+                    onCreate: createTask
                 )
                 .id(dayOffset)
             } else {
@@ -122,6 +125,41 @@ struct PlannerScreen: View {
             NotificationScheduler.sync(tasks)
         }
         .onChange(of: mode) { _, _ in selectedID = nil }
+        .alert("Новая задача", isPresented: Binding(get: { namingTask != nil }, set: { if !$0 { namingTask = nil } }), presenting: namingTask) { task in
+            TextField("Название", text: $newTitle)
+            Button("Готово") { finishNaming(task, keep: true) }
+            Button("Отмена", role: .cancel) { finishNaming(task, keep: false) }
+        } message: { task in
+            Text(whenText(task))
+        }
+    }
+
+    /// Тап или протягивание по свободному месту сетки: задача создаётся сразу, название спрашивается следом.
+    private func createTask(start: Int, duration: Int) {
+        let task = PlannerTask(
+            title: "Новая задача",
+            day: DayMath.day(offset: dayOffset),
+            start: start,
+            duration: duration,
+            backlogRank: (tasks.map { $0.backlogRank }.max() ?? 0) + 1
+        )
+        context.insert(task)
+        selectedID = task.id
+        newTitle = ""
+        namingTask = task
+    }
+
+    private func finishNaming(_ task: PlannerTask, keep: Bool) {
+        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if keep {
+            if !title.isEmpty { task.title = title.capitalizedFirst }
+            NotificationScheduler.sync(tasks)
+        } else {
+            if selectedID == task.id { selectedID = nil }
+            context.delete(task)
+        }
+        namingTask = nil
+        newTitle = ""
     }
 
     // MARK: - Оверлеи

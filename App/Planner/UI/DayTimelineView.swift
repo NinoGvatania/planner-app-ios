@@ -14,8 +14,12 @@ struct DayTimelineView: View {
     /// (задача, где палец, где палец был в начале) в координатах «planner».
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
+    /// Создать задачу на свободном месте: (начало, длительность) в минутах.
+    let onCreate: (Int, Int) -> Void
 
     @State private var liveDuration: Int?
+    /// Силуэт создаваемой задачи, пока тянут по свободному месту: (начало, длительность).
+    @State private var creating: (start: Int, duration: Int)?
 
     private let topInset: CGFloat = 10
     private let gridHeight = 24 * Tokens.hourHeight
@@ -55,8 +59,6 @@ struct DayTimelineView: View {
                     }
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { selectedID = nil }
         }
     }
 
@@ -121,6 +123,38 @@ struct DayTimelineView: View {
         let nowMinutes = DayMath.nowMinutes()
         let nowTop = topInset + CGFloat(nowMinutes) / 60 * Tokens.hourHeight
         return ZStack(alignment: .topLeading) {
+            // Свободное место: тап создаёт задачу (или снимает выделение), удержание с протягиванием — задачу нужной длины.
+            Color.clear
+                .frame(height: topInset + gridHeight + 26)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 1) { location in
+                    if selectedID != nil {
+                        selectedID = nil
+                        liveDuration = nil
+                    } else {
+                        let start = snappedMinutes(forY: location.y)
+                        onCreate(ClockGrid.clampedStart(start, duration: 30), 30)
+                    }
+                }
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.3)
+                        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("grid")))
+                        .onChanged { value in
+                            if case .second(true, let dragValue?) = value {
+                                let start = snappedMinutes(forY: dragValue.startLocation.y)
+                                let end = snappedMinutes(forY: dragValue.location.y)
+                                let duration = max(15, min(end - start, ClockGrid.dayEnd - start))
+                                creating = (start: ClockGrid.clampedStart(start, duration: duration), duration: duration)
+                            }
+                        }
+                        .onEnded { _ in
+                            if let creating = creating {
+                                onCreate(creating.start, creating.duration)
+                            }
+                            creating = nil
+                        }
+                )
+
             VStack(spacing: 0) {
                 ForEach(0..<24, id: \.self) { hour in
                     let top = topInset + CGFloat(hour) * Tokens.hourHeight
@@ -131,6 +165,7 @@ struct DayTimelineView: View {
             }
             .padding(.top, topInset)
             .padding(.bottom, 26)
+            .allowsHitTesting(false)
 
             Rectangle()
                 .fill(Tokens.line)
@@ -147,6 +182,15 @@ struct DayTimelineView: View {
                 let height = max(CGFloat(drag.duration) / 60 * Tokens.hourHeight - 2, 24)
                 let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
                 dropPreview(start: start, duration: drag.duration)
+                    .frame(width: areaWidth - 6, height: height)
+                    .position(x: Tokens.gutter + 3 + (areaWidth - 6) / 2, y: top + height / 2)
+                    .allowsHitTesting(false)
+            }
+
+            if let creating = creating {
+                let height = max(CGFloat(creating.duration) / 60 * Tokens.hourHeight - 2, 24)
+                let top = topInset + CGFloat(creating.start) / 60 * Tokens.hourHeight + 1
+                dropPreview(start: creating.start, duration: creating.duration)
                     .frame(width: areaWidth - 6, height: height)
                     .position(x: Tokens.gutter + 3 + (areaWidth - 6) / 2, y: top + height / 2)
                     .allowsHitTesting(false)
@@ -250,6 +294,12 @@ struct DayTimelineView: View {
                     .padding(.horizontal, 8)
                     .padding(.top, 3)
             }
+    }
+
+    /// Минуты от 0:00 по вертикальной координате в сетке, с шагом 15 минут.
+    private func snappedMinutes(forY y: CGFloat) -> Int {
+        let minutes = Int(((y - topInset) / Tokens.hourHeight * 60 / 15).rounded(.down)) * 15
+        return max(0, min(ClockGrid.dayEnd, minutes))
     }
 
     private func hourRow(_ hour: Int, hideLabel: Bool) -> some View {

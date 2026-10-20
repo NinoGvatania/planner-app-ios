@@ -79,6 +79,8 @@ struct HeaderView: View {
                     }
                     Divider()
                     Toggle("Показывать выполненные", isOn: $showDone)
+                    Divider()
+                    Text("Сборка \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
                 } label: {
                     Image(systemName: mode.symbol)
                         .font(.system(size: 18, weight: .medium))
