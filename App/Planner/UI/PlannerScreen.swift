@@ -22,6 +22,7 @@ struct PlannerScreen: View {
     @State private var springTask: Task<Void, Never>?
     @State private var springOffset: Int?
     @State private var namingTask: PlannerTask?
+    @State private var editingTask: PlannerTask?
     @State private var newTitle = ""
 
     private let gridTopInset: CGFloat = 10
@@ -100,13 +101,14 @@ struct PlannerScreen: View {
                     onResize: resize,
                     onDragChanged: dragChanged,
                     onDragEnded: dragEnded,
-                    onCreate: createTask
+                    onCreate: createTask,
+                    onEdit: { editingTask = $0 }
                 )
                 .id(dayOffset)
             } else if mode == .matrix {
-                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded)
+                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 })
             } else if mode == .weekList {
-                WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded)
+                WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 })
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: mode.symbol)
@@ -128,7 +130,8 @@ struct PlannerScreen: View {
                 onToggle: toggleDone,
                 drag: drag,
                 onDragChanged: dragChanged,
-                onDragEnded: dragEnded
+                onDragEnded: dragEnded,
+                onEdit: { editingTask = $0 }
             )
         }
         .coordinateSpace(name: "planner")
@@ -153,6 +156,17 @@ struct PlannerScreen: View {
             NotificationScheduler.sync(tasks)
         }
         .onChange(of: mode) { _, _ in selectedID = nil }
+        .sheet(item: $editingTask) { task in
+            TaskEditSheet(
+                task: task,
+                onDelete: {
+                    if selectedID == task.id { selectedID = nil }
+                    context.delete(task)
+                    NotificationScheduler.sync(tasks)
+                },
+                onChanged: { NotificationScheduler.sync(tasks) }
+            )
+        }
         .alert("Новая задача", isPresented: Binding(get: { namingTask != nil }, set: { if !$0 { namingTask = nil } }), presenting: namingTask) { task in
             TextField("Название", text: $newTitle)
             Button("Готово") { finishNaming(task, keep: true) }

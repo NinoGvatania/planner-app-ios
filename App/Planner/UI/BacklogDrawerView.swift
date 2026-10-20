@@ -13,6 +13,7 @@ struct BacklogDrawerView: View {
     let drag: DragState?
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
+    let onEdit: (PlannerTask) -> Void
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
@@ -181,6 +182,7 @@ struct BacklogDrawerView: View {
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .foregroundStyle(Tokens.text)
         .contentShape(Rectangle())
+        .onTapGesture { onEdit(task) }
         .gesture(
             LongPressGesture(minimumDuration: 0.3)
                 .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))

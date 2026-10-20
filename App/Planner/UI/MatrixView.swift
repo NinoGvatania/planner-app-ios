@@ -8,6 +8,7 @@ struct MatrixView: View {
     let onToggle: (PlannerTask) -> Void
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
+    let onEdit: (PlannerTask) -> Void
 
     private let labelWidth: CGFloat = 18
 
@@ -155,6 +156,7 @@ struct MatrixView: View {
         .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 10))
         .opacity(drag?.taskID == task.id ? 0.35 : 1)
         .contentShape(Rectangle())
+        .onTapGesture { onEdit(task) }
         .gesture(
             LongPressGesture(minimumDuration: 0.3)
                 .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))

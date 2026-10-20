@@ -16,6 +16,8 @@ struct DayTimelineView: View {
     let onDragEnded: () -> Void
     /// Создать задачу на свободном месте: (начало, длительность) в минутах.
     let onCreate: (Int, Int) -> Void
+    /// Открыть редактор задачи.
+    let onEdit: (PlannerTask) -> Void
 
     @State private var liveDuration: Int?
     /// Силуэт создаваемой задачи, пока тянут по свободному месту: (начало, длительность).
@@ -114,6 +116,7 @@ struct DayTimelineView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style.border, lineWidth: 1))
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.55 : 1))
         .contentShape(Rectangle())
+        .onTapGesture { onEdit(task) }
         .gesture(dragGesture(for: task))
     }
 
@@ -229,8 +232,12 @@ struct DayTimelineView: View {
             .position(x: left + width / 2, y: top + height / 2)
             .zIndex(selected ? 2 : 1)
             .onTapGesture {
-                selectedID = selectedID == task.id ? nil : task.id
-                liveDuration = nil
+                if selectedID == task.id {
+                    onEdit(task)
+                } else {
+                    selectedID = task.id
+                    liveDuration = nil
+                }
             }
             .gesture(dragGesture(for: task))
 

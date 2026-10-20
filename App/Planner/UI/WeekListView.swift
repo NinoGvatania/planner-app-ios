@@ -8,6 +8,7 @@ struct WeekListView: View {
     let onToggle: (PlannerTask) -> Void
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
+    let onEdit: (PlannerTask) -> Void
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -102,6 +103,7 @@ struct WeekListView: View {
         .frame(minHeight: 46)
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .contentShape(Rectangle())
+        .onTapGesture { onEdit(task) }
         .gesture(
             LongPressGesture(minimumDuration: 0.3)
                 .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
