@@ -1,12 +1,14 @@
 import PlannerCore
 import SwiftUI
 
-/// Строка «весь день» и сетка 0:00–24:00 одного дня.
-/// Тап по блоку выделяет его, ручка снизу растягивает, удержание начинает перетаскивание.
+/// Сетка 0:00–24:00 на один или три дня: строка «весь день», колонки дней, блоки задач.
+/// Тап по блоку выделяет его (второй тап — редактор), ручка снизу растягивает, удержание начинает
+/// перетаскивание; тап по свободному месту создаёт задачу, удержание с протягиванием — задачу нужной длины.
+/// У верхнего и нижнего края сетка прокручивается сама, пока тянут или растягивают.
 struct DayTimelineView: View {
-    let timed: [PlannerTask]
-    let allDay: [PlannerTask]
-    let showNow: Bool
+    /// Смещения дней от сегодняшнего: один день или три подряд.
+    let days: [Int]
+    let tasks: [PlannerTask]
     @Binding var selectedID: UUID?
     let drag: DragState?
     let onToggle: (PlannerTask) -> Void
@@ -14,24 +16,63 @@ struct DayTimelineView: View {
     /// (задача, где палец, где палец был в начале) в координатах «planner».
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
-    /// Создать задачу на свободном месте: (начало, длительность) в минутах.
-    let onCreate: (Int, Int) -> Void
-    /// Открыть редактор задачи.
+    /// Создать задачу: (день, начало, длительность).
+    let onCreate: (Int, Int, Int) -> Void
     let onEdit: (PlannerTask) -> Void
+    /// Сдвинуть окно дней (свайп по заголовкам в режиме «3 дня»).
+    var onShiftDays: ((Int) -> Void)? = nil
 
     @State private var liveDuration: Int?
-    /// Силуэт создаваемой задачи, пока тянут по свободному месту: (начало, длительность).
-    @State private var creating: (start: Int, duration: Int)?
+    /// Силуэт создаваемой задачи, пока тянут по свободному месту.
+    @State private var creating: (day: Int, start: Int, duration: Int)?
+    @State private var scrollPosition = ScrollPosition(edge: .top)
+    @State private var scrollOffset: CGFloat = 0
+    @State private var scrolledToNow = false
+    /// Видимая область сетки в координатах «planner».
+    @State private var viewport: CGRect = .zero
+    @State private var autoScroll: Task<Void, Never>?
+    @State private var autoScrollDirection = 0
 
     private let topInset: CGFloat = 10
+    private let bottomInset: CGFloat = 26
     private let gridHeight = 24 * Tokens.hourHeight
+    private var contentHeight: CGFloat { topInset + gridHeight + bottomInset }
+    private var compactColumns: Bool { days.count > 1 }
+    /// Сетка недели: семь узких колонок, подписи и чипы без лишних элементов.
+    private var narrowColumns: Bool { days.count >= 5 }
+
+    private func date(_ offset: Int) -> Date { DayMath.day(offset: offset) }
+
+    /// Перетаскиваемая задача, чей день сейчас не виден (день переключился во время перетаскивания):
+    /// её блок остаётся в первой колонке невидимым, чтобы жест не оборвался.
+    private var phantom: PlannerTask? {
+        guard let drag = drag, let task = tasks.first(where: { $0.id == drag.taskID }), let day = task.day,
+              !days.contains(DayMath.offset(of: day)) else { return nil }
+        return task
+    }
+
+    private func timed(column index: Int, day offset: Int) -> [PlannerTask] {
+        let day = date(offset)
+        var list = tasks.filter { $0.day == day && $0.start != nil }
+        if index == 0, let phantom = phantom, phantom.start != nil { list.append(phantom) }
+        return list
+    }
+
+    private func allDay(column index: Int, day offset: Int) -> [PlannerTask] {
+        let day = date(offset)
+        var list = tasks.filter { $0.day == day && $0.start == nil }
+        if index == 0, let phantom = phantom, phantom.start == nil { list.append(phantom) }
+        return list
+    }
 
     private func duration(of task: PlannerTask) -> Int {
         task.id == selectedID ? (liveDuration ?? task.duration) : task.duration
     }
 
-    private var placements: [String: LanePlacement] {
-        let items = timed.map { LayoutItem(id: $0.id.uuidString, start: $0.start ?? 0, duration: duration(of: $0)) }
+    private func placements(_ list: [PlannerTask], day: Date) -> [String: LanePlacement] {
+        let items = list
+            .filter { $0.day == day }
+            .map { LayoutItem(id: $0.id.uuidString, start: $0.start ?? 0, duration: duration(of: $0)) }
         var result: [String: LanePlacement] = [:]
         for placement in DayLayout.lanes(for: items) {
             result[placement.id] = placement
@@ -41,80 +82,183 @@ struct DayTimelineView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if compactColumns {
+                dayHeaders
+            }
             allDayRow
-                .reportZone("allday")
             Rectangle().fill(Tokens.line).frame(height: 1)
             GeometryReader { geometry in
                 let areaWidth = max(0, geometry.size.width - Tokens.gutter - 8)
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical, showsIndicators: false) {
-                        TimelineView(.everyMinute) { _ in
-                            grid(areaWidth: areaWidth)
-                        }
-                        .reportZone("grid")
-                    }
-                    .onAppear {
-                        let hour = max(0, min(23, DayMath.nowMinutes() / 60 - 1))
-                        DispatchQueue.main.async {
-                            proxy.scrollTo("hour-\(hour)", anchor: .top)
-                        }
-                    }
+                ScrollView(.vertical, showsIndicators: false) {
+                    grid(areaWidth: areaWidth)
                 }
+                .scrollPosition($scrollPosition)
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
+                    scrollOffset = offset
+                }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("planner")) } action: { frame in
+                    viewport = frame
+                    scrollToNowIfNeeded()
+                }
+                .reportZone("timeline")
             }
         }
+        .onChange(of: drag?.location) { _, location in
+            if let location = location {
+                updateAutoScroll(fingerY: location.y)
+            } else {
+                stopAutoScroll()
+            }
+        }
+        .onDisappear { stopAutoScroll() }
+    }
+
+    // MARK: - Прокрутка
+
+    private func scrollToNowIfNeeded() {
+        guard !scrolledToNow, viewport.height > 0 else { return }
+        scrolledToNow = true
+        let hour = max(0, min(23, DayMath.nowMinutes() / 60 - 1))
+        let y = min(topInset + CGFloat(hour) * Tokens.hourHeight, max(0, contentHeight - viewport.height))
+        DispatchQueue.main.async {
+            scrollPosition.scrollTo(y: y)
+        }
+    }
+
+    /// У края видимой области (52 pt) сетка едет сама по 12 pt за кадр, как в прототипе.
+    private func updateAutoScroll(fingerY: CGFloat) {
+        let edge: CGFloat = 52
+        var direction = 0
+        if viewport.height > 0, fingerY >= viewport.minY, fingerY <= viewport.maxY {
+            if fingerY < viewport.minY + edge {
+                direction = -1
+            } else if fingerY > viewport.maxY - edge {
+                direction = 1
+            }
+        }
+        guard direction != autoScrollDirection else { return }
+        autoScrollDirection = direction
+        autoScroll?.cancel()
+        autoScroll = nil
+        guard direction != 0 else { return }
+        autoScroll = Task { @MainActor in
+            var y = scrollOffset
+            while !Task.isCancelled {
+                let limit = max(0, contentHeight - viewport.height)
+                let next = max(0, min(limit, y + CGFloat(direction) * 12))
+                if next == y { break }
+                y = next
+                scrollPosition.scrollTo(y: y)
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+    }
+
+    private func stopAutoScroll() {
+        autoScrollDirection = 0
+        autoScroll?.cancel()
+        autoScroll = nil
+    }
+
+    /// Координата «planner» → координата содержимого сетки.
+    private func gridY(fromPlannerY y: CGFloat) -> CGFloat {
+        y - viewport.minY + scrollOffset
+    }
+
+    // MARK: - Заголовки дней (3 дня)
+
+    private var dayHeaders: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: Tokens.gutter)
+            ForEach(days, id: \.self) { offset in
+                let date = date(offset)
+                let hovered = drag?.target == .dayTab(offset: offset)
+                VStack(spacing: 2) {
+                    Text(DayMath.weekdayShort[DayMath.weekdayIndex(date)])
+                        .font(.system(size: 11))
+                        .foregroundStyle(offset == 0 ? Tokens.accent : (offset < 0 ? Tokens.muted : Tokens.caption))
+                    Text("\(DayMath.dayOfMonth(date))")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(offset == 0 ? Tokens.onAccent : (offset < 0 ? Tokens.muted : Tokens.text))
+                        .frame(minWidth: 28, minHeight: 28)
+                        .background(offset == 0 ? Tokens.accent : Color.clear, in: Capsule())
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(hovered ? Tokens.accent.opacity(0.22) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                .reportZone("tab-\(offset)")
+                .accessibilityLabel(DayMath.accessibilityLabel(offset: offset))
+            }
+        }
+        .padding(.trailing, 8)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    onShiftDays?(value.translation.width < 0 ? days.count : -days.count)
+                }
+        )
     }
 
     // MARK: - Весь день
 
     private var allDayRow: some View {
-        let hovered = drag?.target == .allDay
-        return HStack(alignment: .top, spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             Text("весь\nдень")
                 .font(.system(size: 11))
                 .foregroundStyle(Tokens.muted)
                 .multilineTextAlignment(.trailing)
                 .frame(width: Tokens.gutter - 7, alignment: .trailing)
                 .padding(.top, 9)
-            VStack(spacing: 4) {
-                ForEach(allDay, id: \.id) { task in
-                    allDayChip(task)
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                let hovered = drag?.target == .allDay(day: day)
+                let date = date(day)
+                VStack(spacing: 4) {
+                    ForEach(allDay(column: index, day: day), id: \.id) { task in
+                        allDayChip(task, phantom: task.day != date)
+                    }
                 }
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .top)
+                .padding(.horizontal, narrowColumns ? 1 : 3)
+                .padding(.vertical, 6)
+                .padding(.leading, index == 0 ? 7 : 0)
+                .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
+                .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
+                .reportZone("allday-\(day)")
             }
-            .frame(maxWidth: .infinity, minHeight: 40, alignment: .top)
-            .padding(.horizontal, 3)
-            .padding(.vertical, 6)
-            .padding(.leading, 7)
-            .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
-            .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
         }
         .padding(.trailing, 8)
     }
 
-    private func allDayChip(_ task: PlannerTask) -> some View {
+    private func allDayChip(_ task: PlannerTask, phantom: Bool) -> some View {
         let style = task.quadrant.style
         return HStack(spacing: 2) {
-            Button { onToggle(task) } label: {
-                Circle()
-                    .strokeBorder(style.dot, lineWidth: 2)
-                    .background(Circle().fill(task.isDone ? style.dot : Color.clear))
-                    .frame(width: 13, height: 13)
-                    .frame(width: 24, height: 24)
+            if !narrowColumns {
+                Button { onToggle(task) } label: {
+                    Circle()
+                        .strokeBorder(style.dot, lineWidth: 2)
+                        .background(Circle().fill(task.isDone ? style.dot : Color.clear))
+                        .frame(width: 13, height: 13)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
             Text(task.title)
-                .font(.system(size: 12.5))
+                .font(.system(size: narrowColumns ? 11 : 12.5))
                 .lineLimit(1)
                 .strikethrough(task.isDone)
+                .padding(.leading, narrowColumns ? 5 : 0)
             Spacer(minLength: 0)
         }
         .padding(.leading, 1)
-        .padding(.trailing, 8)
-        .frame(height: 28)
+        .padding(.trailing, compactColumns ? 4 : 8)
+        .frame(height: narrowColumns ? 24 : 28)
         .foregroundStyle(style.text)
         .background(style.background, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style.border, lineWidth: 1))
-        .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.55 : 1))
+        .opacity(phantom ? 0 : (drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.55 : 1)))
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
         .gesture(dragGesture(for: task))
@@ -123,133 +267,152 @@ struct DayTimelineView: View {
     // MARK: - Сетка
 
     private func grid(areaWidth: CGFloat) -> some View {
-        let nowMinutes = DayMath.nowMinutes()
-        let nowTop = topInset + CGFloat(nowMinutes) / 60 * Tokens.hourHeight
+        let columnWidth = areaWidth / CGFloat(max(1, days.count))
         return ZStack(alignment: .topLeading) {
-            // Свободное место: тап создаёт задачу (или снимает выделение), удержание с протягиванием — задачу нужной длины.
-            Color.clear
-                .frame(height: topInset + gridHeight + 26)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 1) { location in
-                    if selectedID != nil {
-                        selectedID = nil
-                        liveDuration = nil
-                    } else {
-                        let start = snappedMinutes(forY: location.y)
-                        onCreate(ClockGrid.clampedStart(start, duration: 30), 30)
-                    }
-                }
-                .gesture(
-                    LongPressGesture(minimumDuration: 0.3)
-                        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("grid")))
-                        .onChanged { value in
-                            if case .second(true, let dragValue?) = value {
-                                let start = snappedMinutes(forY: dragValue.startLocation.y)
-                                let end = snappedMinutes(forY: dragValue.location.y)
-                                let duration = max(15, min(end - start, ClockGrid.dayEnd - start))
-                                creating = (start: ClockGrid.clampedStart(start, duration: duration), duration: duration)
-                            }
-                        }
-                        .onEnded { _ in
-                            if let creating = creating {
-                                onCreate(creating.start, creating.duration)
-                            }
-                            creating = nil
-                        }
-                )
+            // Колонки дней: свободное место каждой — зона создания и зона сброса.
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                let left = Tokens.gutter + columnWidth * CGFloat(index)
+                columnBackground(day: day)
+                    .frame(width: columnWidth, height: contentHeight)
+                    .reportZone("grid-\(day)")
+                    .position(x: left + columnWidth / 2, y: contentHeight / 2)
+            }
 
             VStack(spacing: 0) {
                 ForEach(0..<24, id: \.self) { hour in
-                    let top = topInset + CGFloat(hour) * Tokens.hourHeight
-                    hourRow(hour, hideLabel: showNow && abs(top - nowTop) < 22)
+                    hourRow(hour)
                         .frame(height: Tokens.hourHeight)
-                        .id("hour-\(hour)")
                 }
             }
             .padding(.top, topInset)
-            .padding(.bottom, 26)
+            .padding(.bottom, bottomInset)
             .allowsHitTesting(false)
 
-            Rectangle()
-                .fill(Tokens.line)
-                .frame(width: 1, height: gridHeight)
-                .position(x: Tokens.gutter + 0.5, y: topInset + gridHeight / 2)
+            ForEach(Array(days.enumerated()), id: \.offset) { index, _ in
+                Rectangle()
+                    .fill(Tokens.line)
+                    .frame(width: 1, height: gridHeight)
+                    .position(x: Tokens.gutter + columnWidth * CGFloat(index) + 0.5, y: topInset + gridHeight / 2)
+                    .allowsHitTesting(false)
+            }
 
-            ForEach(timed, id: \.id) { task in
-                if let placement = placements[task.id.uuidString] {
-                    block(task, placement: placement, areaWidth: areaWidth)
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                let left = Tokens.gutter + columnWidth * CGFloat(index)
+                let date = date(day)
+                let list = timed(column: index, day: day)
+                let placed = placements(list, day: date)
+                ForEach(list, id: \.id) { task in
+                    let placement = placed[task.id.uuidString] ?? LanePlacement(id: task.id.uuidString, lane: 0, laneCount: 1)
+                    block(task, placement: placement, columnLeft: left, columnWidth: columnWidth, phantom: task.day != date)
+                        .zIndex(task.id == selectedID ? 2 : 1)
+                }
+                if drag == nil, let selected = list.first(where: { $0.id == selectedID && $0.day == date }),
+                   let placement = placed[selected.id.uuidString] {
+                    resizeHandle(selected, placement: placement, columnLeft: left, columnWidth: columnWidth)
+                        .zIndex(3)
                 }
             }
 
-            if let drag = drag, case .grid(let start) = drag.target {
-                let height = max(CGFloat(drag.duration) / 60 * Tokens.hourHeight - 2, 24)
-                let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
-                dropPreview(start: start, duration: drag.duration)
-                    .frame(width: areaWidth - 6, height: height)
-                    .position(x: Tokens.gutter + 3 + (areaWidth - 6) / 2, y: top + height / 2)
-                    .allowsHitTesting(false)
+            if let drag = drag, case .grid(let day, let start) = drag.target, let index = days.firstIndex(of: day) {
+                preview(start: start, duration: drag.duration, columnLeft: Tokens.gutter + columnWidth * CGFloat(index), columnWidth: columnWidth)
             }
 
-            if let creating = creating {
-                let height = max(CGFloat(creating.duration) / 60 * Tokens.hourHeight - 2, 24)
-                let top = topInset + CGFloat(creating.start) / 60 * Tokens.hourHeight + 1
-                dropPreview(start: creating.start, duration: creating.duration)
-                    .frame(width: areaWidth - 6, height: height)
-                    .position(x: Tokens.gutter + 3 + (areaWidth - 6) / 2, y: top + height / 2)
-                    .allowsHitTesting(false)
+            if let creating = creating, let index = days.firstIndex(of: creating.day) {
+                preview(start: creating.start, duration: creating.duration, columnLeft: Tokens.gutter + columnWidth * CGFloat(index), columnWidth: columnWidth)
             }
 
-            if showNow {
-                nowLine(minutes: nowMinutes, areaWidth: areaWidth)
-                    .position(x: (Tokens.gutter + 8 + areaWidth) / 2, y: nowTop)
-                    .allowsHitTesting(false)
+            if let index = days.firstIndex(of: 0) {
+                TimelineView(.everyMinute) { context in
+                    let minutes = DayMath.nowMinutes(at: context.date)
+                    let y = topInset + CGFloat(minutes) / 60 * Tokens.hourHeight
+                    ZStack(alignment: .topLeading) {
+                        nowLine(width: columnWidth)
+                            .position(x: Tokens.gutter + columnWidth * CGFloat(index) + columnWidth / 2, y: y)
+                        nowLabel(minutes: minutes)
+                            .position(x: (Tokens.gutter - 8) / 2, y: y)
+                    }
+                }
+                .allowsHitTesting(false)
             }
         }
+        .frame(height: contentHeight)
         .padding(.trailing, 8)
-        .coordinateSpace(name: "grid")
     }
 
-    private func block(_ task: PlannerTask, placement: LanePlacement, areaWidth: CGFloat) -> some View {
-        let laneWidth = areaWidth / CGFloat(placement.laneCount)
+    private func columnBackground(day: Int) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture(count: 1) { location in
+                if selectedID != nil {
+                    selectedID = nil
+                    liveDuration = nil
+                } else {
+                    let start = snappedMinutes(forY: location.y)
+                    onCreate(day, ClockGrid.clampedStart(start, duration: 30), 30)
+                }
+            }
+            .gesture(
+                LongPressGesture(minimumDuration: 0.3)
+                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+                    .onChanged { value in
+                        guard case .second(true, let dragValue?) = value else { return }
+                        let start = snappedMinutes(forY: dragValue.startLocation.y)
+                        let end = snappedMinutes(forY: dragValue.location.y)
+                        // Просто удержание с дрожанием пальца задачу не создаёт: нужно уйти в следующую ячейку.
+                        guard end > start || creating != nil else { return }
+                        let duration = max(15, min(end - start, ClockGrid.dayEnd - start))
+                        creating = (day: day, start: ClockGrid.clampedStart(start, duration: duration), duration: duration)
+                    }
+                    .onEnded { _ in
+                        if let creating = creating {
+                            onCreate(creating.day, creating.start, creating.duration)
+                        }
+                        creating = nil
+                    }
+            )
+    }
+
+    private func block(_ task: PlannerTask, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat, phantom: Bool) -> some View {
+        let laneWidth = columnWidth / CGFloat(placement.laneCount)
         let width = max(0, laneWidth - 6)
         let start = task.start ?? 0
         let dur = duration(of: task)
         let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
         let height = max(CGFloat(dur) / 60 * Tokens.hourHeight - 2, 24)
         let selected = task.id == selectedID && drag == nil
-        let left = Tokens.gutter + laneWidth * CGFloat(placement.lane) + 3
-        return ZStack(alignment: .topLeading) {
-            TaskBlockView(
-                task: task,
-                height: height,
-                compact: laneWidth < 160,
-                selected: selected,
-                liveDuration: selected ? liveDuration : nil,
-                dimmed: drag?.taskID == task.id,
-                onToggle: { onToggle(task) }
-            )
-            .frame(width: width, height: height)
-            .position(x: left + width / 2, y: top + height / 2)
-            .zIndex(selected ? 2 : 1)
-            .onTapGesture {
-                if selectedID == task.id {
-                    onEdit(task)
-                } else {
-                    selectedID = task.id
-                    liveDuration = nil
-                }
-            }
-            .gesture(dragGesture(for: task))
-
-            if selected {
-                resizeHandle(task, start: start, top: top, height: height, centerX: left + width / 2)
-                    .zIndex(3)
+        let left = columnLeft + laneWidth * CGFloat(placement.lane) + 3
+        return TaskBlockView(
+            task: task,
+            height: height,
+            compact: laneWidth < 160,
+            narrow: laneWidth < 76,
+            selected: selected,
+            liveDuration: selected ? liveDuration : nil,
+            dimmed: drag?.taskID == task.id,
+            onToggle: { onToggle(task) }
+        )
+        .frame(width: width, height: height)
+        .opacity(phantom ? 0 : 1)
+        .position(x: left + width / 2, y: top + height / 2)
+        .onTapGesture {
+            if selectedID == task.id {
+                onEdit(task)
+            } else {
+                selectedID = task.id
+                liveDuration = nil
             }
         }
+        .gesture(dragGesture(for: task))
     }
 
-    private func resizeHandle(_ task: PlannerTask, start: Int, top: CGFloat, height: CGFloat, centerX: CGFloat) -> some View {
-        Capsule()
+    private func resizeHandle(_ task: PlannerTask, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
+        let laneWidth = columnWidth / CGFloat(placement.laneCount)
+        let width = max(0, laneWidth - 6)
+        let start = task.start ?? 0
+        let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
+        let height = max(CGFloat(duration(of: task)) / 60 * Tokens.hourHeight - 2, 24)
+        let centerX = columnLeft + laneWidth * CGFloat(placement.lane) + 3 + width / 2
+        return Capsule()
             .fill(Color.white)
             .frame(width: 44, height: 6)
             .overlay(Capsule().stroke(Tokens.background, lineWidth: 2))
@@ -257,14 +420,16 @@ struct DayTimelineView: View {
             .contentShape(Rectangle())
             .position(x: centerX, y: top + height)
             .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named("grid"))
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("planner"))
                     .onChanged { value in
-                        let bottom = value.location.y - topInset
+                        let bottom = gridY(fromPlannerY: value.location.y) - topInset
                         let minutes = Int((bottom / Tokens.hourHeight * 60 / 15).rounded()) * 15
                         let newDuration = max(15, min(minutes - start, ClockGrid.dayEnd - start))
                         if newDuration != liveDuration { liveDuration = newDuration }
+                        updateAutoScroll(fingerY: value.location.y)
                     }
                     .onEnded { _ in
+                        stopAutoScroll()
                         if let value = liveDuration, value != task.duration {
                             onResize(task, value)
                         }
@@ -285,8 +450,11 @@ struct DayTimelineView: View {
             .onEnded { _ in onDragEnded() }
     }
 
-    private func dropPreview(start: Int, duration: Int) -> some View {
-        RoundedRectangle(cornerRadius: 9)
+    private func preview(start: Int, duration: Int, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
+        let height = max(CGFloat(duration) / 60 * Tokens.hourHeight - 2, 24)
+        let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
+        let width = max(0, columnWidth - 6)
+        return RoundedRectangle(cornerRadius: 9)
             .fill(Tokens.accent.opacity(0.14))
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
@@ -300,7 +468,11 @@ struct DayTimelineView: View {
                     .foregroundStyle(Tokens.accent)
                     .padding(.horizontal, 8)
                     .padding(.top, 3)
+                    .lineLimit(1)
             }
+            .frame(width: width, height: height)
+            .position(x: columnLeft + 3 + width / 2, y: top + height / 2)
+            .allowsHitTesting(false)
     }
 
     /// Минуты от 0:00 по вертикальной координате в сетке, с шагом 15 минут.
@@ -309,7 +481,7 @@ struct DayTimelineView: View {
         return max(0, min(ClockGrid.dayEnd, minutes))
     }
 
-    private func hourRow(_ hour: Int, hideLabel: Bool) -> some View {
+    private func hourRow(_ hour: Int) -> some View {
         ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(Tokens.line)
@@ -321,23 +493,25 @@ struct DayTimelineView: View {
                 .foregroundStyle(Tokens.muted)
                 .frame(width: Tokens.gutter - 8, alignment: .trailing)
                 .offset(y: -7)
-                .opacity(hideLabel ? 0 : 1)
         }
     }
 
-    private func nowLine(minutes: Int, areaWidth: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            Text(ClockGrid.format(minutes: minutes))
-                .font(.system(size: 11, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(Tokens.accent)
-                .frame(width: Tokens.gutter - 4, alignment: .trailing)
-            ZStack(alignment: .leading) {
-                Rectangle().fill(Tokens.accent).frame(height: 2)
-                Circle().fill(Tokens.accent).frame(width: 10, height: 10).offset(x: -1)
-            }
-            .padding(.leading, 4)
+    private func nowLine(width: CGFloat) -> some View {
+        ZStack(alignment: .leading) {
+            Rectangle().fill(Tokens.accent).frame(height: 2)
+            Circle().fill(Tokens.accent).frame(width: 10, height: 10).offset(x: -5)
         }
-        .frame(width: Tokens.gutter + 8 + areaWidth, height: 12)
+        .frame(width: width, height: 12)
+    }
+
+    /// Подпись текущего времени в левой колонке; фон закрывает подпись часа, если они совпали.
+    private func nowLabel(minutes: Int) -> some View {
+        Text(ClockGrid.format(minutes: minutes))
+            .font(.system(size: 11, weight: .bold))
+            .monospacedDigit()
+            .foregroundStyle(Tokens.accent)
+            .padding(.vertical, 2)
+            .frame(width: Tokens.gutter - 8, alignment: .trailing)
+            .background(Tokens.background)
     }
 }

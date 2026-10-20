@@ -5,8 +5,10 @@ import SwiftUI
 struct TaskBlockView: View {
     let task: PlannerTask
     let height: CGFloat
-    /// Узкая колонка (3 дня или несколько параллельных задач).
+    /// Узкая колонка (несколько параллельных задач).
     let compact: Bool
+    /// Очень узкая колонка (сетка недели): без кружка, только название.
+    var narrow: Bool = false
     var selected: Bool = false
     /// Длительность во время растягивания (иначе — из задачи).
     var liveDuration: Int? = nil
@@ -34,61 +36,71 @@ struct TaskBlockView: View {
 
     private var lines: Int {
         let lineHeight = titleSize * 1.25
-        let available = height - (compact ? 6 : 10) - timeSize - 6
+        let available = height - (compact ? 6 : 10) - (narrow ? 0 : timeSize + 6)
         return max(1, Int(available / lineHeight))
     }
 
     var body: some View {
         let style = task.quadrant.style
         HStack(alignment: tall ? .top : .center, spacing: 3) {
-            Button(action: onToggle) {
-                ZStack {
-                    Circle()
-                        .strokeBorder(style.dot, lineWidth: 2)
-                        .background(Circle().fill(task.isDone ? style.dot : Color.clear))
-                        .frame(width: compact ? 13 : 16, height: compact ? 13 : 16)
-                    if task.isDone {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: compact ? 7 : 9, weight: .heavy))
-                            .foregroundStyle(Tokens.background)
-                    }
-                }
-                .frame(width: compact ? 26 : 34)
-                .frame(maxHeight: .infinity, alignment: tall ? .top : .center)
-                .padding(.top, tall ? 1 : 0)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
-
-            if tall {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(task.title)
-                        .font(.system(size: titleSize, weight: .semibold))
-                        .lineLimit(lines)
-                        .strikethrough(task.isDone)
-                    Text(timeText)
-                        .font(.system(size: timeSize))
-                        .monospacedDigit()
-                        .opacity(0.8)
-                        .lineLimit(1)
-                }
-                .padding(.top, 1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if narrow {
+                Text(task.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(max(1, lines))
+                    .strikethrough(task.isDone)
+                    .padding(.leading, 5)
+                    .padding(.top, tall ? 2 : 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                HStack(spacing: 6) {
-                    Text(task.title)
-                        .font(.system(size: titleSize, weight: .semibold))
-                        .lineLimit(1)
-                        .strikethrough(task.isDone)
-                    if !compact || selected {
-                        Spacer(minLength: 0)
-                        Text(shortTimeText)
+                Button(action: onToggle) {
+                    ZStack {
+                        Circle()
+                            .strokeBorder(style.dot, lineWidth: 2)
+                            .background(Circle().fill(task.isDone ? style.dot : Color.clear))
+                            .frame(width: compact ? 13 : 16, height: compact ? 13 : 16)
+                        if task.isDone {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: compact ? 7 : 9, weight: .heavy))
+                                .foregroundStyle(Tokens.background)
+                        }
+                    }
+                    .frame(width: compact ? 26 : 34)
+                    .frame(maxHeight: .infinity, alignment: tall ? .top : .center)
+                    .padding(.top, tall ? 1 : 0)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
+
+                if tall {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(task.title)
+                            .font(.system(size: titleSize, weight: .semibold))
+                            .lineLimit(lines)
+                            .strikethrough(task.isDone)
+                        Text(timeText)
                             .font(.system(size: timeSize))
                             .monospacedDigit()
                             .opacity(0.8)
+                            .lineLimit(1)
                     }
+                    .padding(.top, 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    HStack(spacing: 6) {
+                        Text(task.title)
+                            .font(.system(size: titleSize, weight: .semibold))
+                            .lineLimit(1)
+                            .strikethrough(task.isDone)
+                        if !compact || selected {
+                            Spacer(minLength: 0)
+                            Text(shortTimeText)
+                                .font(.system(size: timeSize))
+                                .monospacedDigit()
+                                .opacity(0.8)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.vertical, tall ? (compact ? 3 : 5) : 0)

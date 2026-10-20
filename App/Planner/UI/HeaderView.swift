@@ -1,15 +1,16 @@
 import SwiftUI
 
 enum ViewMode: String, CaseIterable, Identifiable {
-    case day, threeDays, weekList, matrix
+    case day, week, weekList, month, matrix
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .day: return "День"
-        case .threeDays: return "3 дня"
+        case .week: return "Неделя"
         case .weekList: return "Неделя списком"
+        case .month: return "Месяц"
         case .matrix: return "Матрица Эйзенхауэра"
         }
     }
@@ -17,8 +18,9 @@ enum ViewMode: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .day: return "rectangle.portrait"
-        case .threeDays: return "rectangle.split.3x1"
+        case .week: return "rectangle.split.3x1"
         case .weekList: return "list.bullet"
+        case .month: return "calendar"
         case .matrix: return "square.grid.2x2"
         }
     }

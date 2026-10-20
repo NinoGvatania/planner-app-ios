@@ -25,9 +25,31 @@ enum DayMath {
     }
 
     /// Текущее время в минутах от 0:00.
-    static func nowMinutes() -> Int {
-        let parts = calendar.dateComponents([.hour, .minute], from: Date())
+    static func nowMinutes(at date: Date = Date()) -> Int {
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
         return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+    }
+
+    /// Смещение понедельника той недели, в которую входит день со смещением `offset`.
+    static func weekStartOffset(containing offset: Int) -> Int {
+        let sinceMonday = (weekdayIndex(day(offset: offset)) + 6) % 7
+        return offset - sinceMonday
+    }
+
+    /// Начало месяца, в который входит день.
+    static func monthStart(of date: Date) -> Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? date
+    }
+
+    /// Месяц со смещением от месяца данного дня (число дня сохраняется, если есть).
+    static func date(_ date: Date, addingMonths months: Int) -> Date {
+        calendar.date(byAdding: .month, value: months, to: date) ?? date
+    }
+
+    static let monthNominative = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+
+    static func year(_ date: Date) -> Int {
+        calendar.component(.year, from: date)
     }
 
     /// 0 — воскресенье … 6 — суббота.

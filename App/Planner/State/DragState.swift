@@ -5,8 +5,8 @@ import SwiftUI
 enum DropTarget: Equatable {
     case backlog
     case dayTab(offset: Int)
-    case allDay
-    case grid(start: Int)
+    case allDay(day: Int)
+    case grid(day: Int, start: Int)
     case quadrant(Int)
 }
 

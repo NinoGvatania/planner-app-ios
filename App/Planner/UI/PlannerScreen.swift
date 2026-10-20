@@ -24,6 +24,7 @@ struct PlannerScreen: View {
     @State private var namingTask: PlannerTask?
     @State private var editingTask: PlannerTask?
     @State private var newTitle = ""
+    @State private var rootSize: CGSize = .zero
 
     private let gridTopInset: CGFloat = 10
 
@@ -40,32 +41,58 @@ struct PlannerScreen: View {
                 return a.backlogRank > b.backlogRank
             }
     }
-    private var dayTasks: [PlannerTask] {
-        let date = DayMath.day(offset: dayOffset)
-        return visibleTasks.filter { $0.day == date }
+    /// Понедельник недели выбранного дня.
+    private var weekStart: Int { DayMath.weekStartOffset(containing: dayOffset) }
+    /// Дни, показанные на сетке: один в режиме «День», неделя с понедельника в режиме «Неделя».
+    private var visibleDays: [Int] {
+        mode == .week ? Array(weekStart...(weekStart + 6)) : [dayOffset]
     }
+    /// Полоска недели начинается с сегодня; если выбранный день дальше — с понедельника его недели.
+    private var stripStart: Int { (0...6).contains(dayOffset) ? 0 : weekStart }
+    private var monthAnchor: Date { DayMath.day(offset: dayOffset) }
+
     private var headerTitle: String {
         switch mode {
         case .day: return DayMath.title(offset: dayOffset)
-        case .weekList:
-            let d0 = DayMath.day(offset: dayOffset), d1 = DayMath.day(offset: dayOffset + 6)
-            return DayMath.monthIndex(d0) == DayMath.monthIndex(d1)
-                ? "\(DayMath.dayOfMonth(d0))–\(DayMath.dayOfMonth(d1)) \(DayMath.monthShort[DayMath.monthIndex(d0)])"
-                : "\(DayMath.dayOfMonth(d0)) \(DayMath.monthShort[DayMath.monthIndex(d0)]) – \(DayMath.dayOfMonth(d1)) \(DayMath.monthShort[DayMath.monthIndex(d1)])"
+        case .week: return rangeTitle(from: weekStart, to: weekStart + 6)
+        case .weekList: return rangeTitle(from: 0, to: 6)
+        case .month: return DayMath.monthNominative[DayMath.monthIndex(monthAnchor)] + " \(DayMath.year(monthAnchor))"
         case .matrix: return "Матрица"
-        case .threeDays: return "3 дня"
         }
     }
 
     private var headerSubtitle: String {
         switch mode {
         case .day: return DayMath.subtitle(offset: dayOffset)
+        case .week:
+            let n = countTasks(from: weekStart, to: weekStart + 6)
+            return "Неделя · \(n) " + DayMath.plural(n, "задача", "задачи", "задач")
         case .weekList: return "Неделя списком"
+        case .month:
+            let start = DayMath.offset(of: DayMath.monthStart(of: monthAnchor))
+            let end = DayMath.offset(of: DayMath.date(DayMath.monthStart(of: monthAnchor), addingMonths: 1)) - 1
+            let n = countTasks(from: start, to: end)
+            return "\(n) " + DayMath.plural(n, "задача", "задачи", "задач") + " в месяце"
         case .matrix:
             let n = tasks.filter { !$0.isDone && !$0.isRoutine }.count
             return "\(n) " + DayMath.plural(n, "открытая задача", "открытые задачи", "открытых задач")
-        case .threeDays: return "Скоро"
         }
+    }
+
+    private func countTasks(from first: Int, to last: Int) -> Int {
+        let a = DayMath.day(offset: first), b = DayMath.day(offset: last)
+        return visibleTasks.filter { task in
+            guard let day = task.day else { return false }
+            return day >= a && day <= b
+        }.count
+    }
+
+    /// «20–22 окт» или «30 окт – 1 ноя».
+    private func rangeTitle(from first: Int, to last: Int) -> String {
+        let d0 = DayMath.day(offset: first), d1 = DayMath.day(offset: last)
+        return DayMath.monthIndex(d0) == DayMath.monthIndex(d1)
+            ? "\(DayMath.dayOfMonth(d0))–\(DayMath.dayOfMonth(d1)) \(DayMath.monthShort[DayMath.monthIndex(d0)])"
+            : "\(DayMath.dayOfMonth(d0)) \(DayMath.monthShort[DayMath.monthIndex(d0)]) – \(DayMath.dayOfMonth(d1)) \(DayMath.monthShort[DayMath.monthIndex(d1)])"
     }
 
     private var hoveredTab: Int? {
@@ -86,15 +113,17 @@ struct PlannerScreen: View {
                 onToday: { withAnimation { dayOffset = 0 } }
             )
 
-            if mode == .day {
-                WeekStripView(dayOffset: $dayOffset, hasTasks: { offset in
-                    let date = DayMath.day(offset: offset)
-                    return visibleTasks.contains { $0.day == date }
-                }, hoveredOffset: hoveredTab)
+            switch mode {
+            case .day, .week:
+                if mode == .day {
+                    WeekStripView(dayOffset: $dayOffset, start: stripStart, hasTasks: { offset in
+                        let date = DayMath.day(offset: offset)
+                        return visibleTasks.contains { $0.day == date }
+                    }, hoveredOffset: hoveredTab)
+                }
                 DayTimelineView(
-                    timed: dayTasks.filter { $0.start != nil },
-                    allDay: dayTasks.filter { $0.start == nil },
-                    showNow: dayOffset == 0,
+                    days: visibleDays,
+                    tasks: visibleTasks,
                     selectedID: $selectedID,
                     drag: drag,
                     onToggle: toggleDone,
@@ -102,23 +131,30 @@ struct PlannerScreen: View {
                     onDragChanged: dragChanged,
                     onDragEnded: dragEnded,
                     onCreate: createTask,
-                    onEdit: { editingTask = $0 }
+                    onEdit: { editingTask = $0 },
+                    onShiftDays: shiftDays
                 )
-                .id(dayOffset)
-            } else if mode == .matrix {
+            case .month:
+                MonthView(
+                    anchor: monthAnchor,
+                    tasks: visibleTasks,
+                    drag: drag,
+                    onSelectDay: { offset in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            dayOffset = offset
+                            mode = .day
+                        }
+                    },
+                    onShiftMonth: { delta in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            dayOffset = DayMath.offset(of: DayMath.date(monthAnchor, addingMonths: delta))
+                        }
+                    }
+                )
+            case .matrix:
                 MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 })
-            } else if mode == .weekList {
+            case .weekList:
                 WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 })
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: mode.symbol)
-                        .font(.system(size: 40))
-                        .foregroundStyle(Tokens.muted)
-                    Text("Вид «\(mode.title)» появится на этапе 2")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Tokens.caption)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             BacklogDrawerView(
@@ -131,11 +167,18 @@ struct PlannerScreen: View {
                 drag: drag,
                 onDragChanged: dragChanged,
                 onDragEnded: dragEnded,
-                onEdit: { editingTask = $0 }
+                onEdit: { editingTask = $0 },
+                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - 64 - 110) : .infinity
             )
         }
         .coordinateSpace(name: "planner")
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { rootSize = $0 }
         .onPreferenceChange(ZoneFramesKey.self) { zones = $0 }
+        .onChange(of: zones) { _, _ in
+            // Сетка уехала под пальцем (автопрокрутка) — пересчитать, куда упадёт задача.
+            guard let state = drag else { return }
+            drag?.target = dropTarget(at: state.location, duration: state.duration, grab: state.grabOffsetY)
+        }
         .background(Tokens.background.ignoresSafeArea())
         .foregroundStyle(Tokens.text)
         .overlay(alignment: .bottom) { toastView }
@@ -155,7 +198,12 @@ struct PlannerScreen: View {
             NotificationScheduler.requestPermission()
             NotificationScheduler.sync(tasks)
         }
-        .onChange(of: mode) { _, _ in selectedID = nil }
+        .onChange(of: mode) { _, _ in
+            selectedID = nil
+            drag = nil
+            springTask?.cancel()
+            springOffset = nil
+        }
         .sheet(item: $editingTask) { task in
             TaskEditSheet(
                 task: task,
@@ -176,11 +224,18 @@ struct PlannerScreen: View {
         }
     }
 
+    /// Свайп по заголовкам недели: окно сдвигается на неделю.
+    private func shiftDays(by delta: Int) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            dayOffset = max(-365, min(365, dayOffset + delta))
+        }
+    }
+
     /// Тап или протягивание по свободному месту сетки: задача создаётся сразу, название спрашивается следом.
-    private func createTask(start: Int, duration: Int) {
+    private func createTask(day: Int, start: Int, duration: Int) {
         let task = PlannerTask(
             title: "Новая задача",
-            day: DayMath.day(offset: dayOffset),
+            day: DayMath.day(offset: day),
             start: start,
             duration: duration,
             backlogRank: (tasks.map { $0.backlogRank }.max() ?? 0) + 1
@@ -218,7 +273,7 @@ struct PlannerScreen: View {
                 .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
                 .shadow(color: Color.black.opacity(0.4), radius: 12, y: 8)
                 .padding(.horizontal, 16)
-                .padding(.bottom, Tokens.drawerCollapsed + 12)
+                .padding(.bottom, (zones["drawer"].map { rootSize.height - $0.minY } ?? Tokens.drawerCollapsed) + 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .allowsHitTesting(false)
         }
@@ -244,19 +299,29 @@ struct PlannerScreen: View {
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(drag.target == nil ? Color(hex: 0x4A4B52) : Tokens.accent, lineWidth: 1.5))
             .shadow(color: Color.black.opacity(0.55), radius: 17, y: 16)
             .rotationEffect(.degrees(-2))
-            .position(x: drag.location.x + 60, y: drag.location.y - 46)
+            .position(x: ghostX(drag.location.x), y: max(drag.location.y - 46, 30))
             .allowsHitTesting(false)
         }
     }
 
+    /// Карточка-призрак не вылезает за правый край экрана (как в прототипе).
+    private func ghostX(_ fingerX: CGFloat) -> CGFloat {
+        let half: CGFloat = 105
+        guard rootSize.width > half * 2 + 16 else { return fingerX + 60 }
+        return min(max(fingerX + 60, half + 8), rootSize.width - half - 8)
+    }
+
     private func ghostMeta(_ drag: DragState) -> String {
         switch drag.target {
-        case .grid(let start):
-            return ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + drag.duration)
-        case .allDay:
-            return DayMath.label(offset: dayOffset).capitalizedFirst + " · весь день"
+        case .grid(let day, let start):
+            let time = ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + drag.duration)
+            return visibleDays.count > 1 ? DayMath.label(offset: day).capitalizedFirst + " · " + time : time
+        case .allDay(let day):
+            return DayMath.label(offset: day).capitalizedFirst + " · весь день"
         case .dayTab(let offset):
-            return offset == dayOffset ? "На " + DayMath.label(offset: offset) : "Подержи — открою " + DayMath.label(offset: offset)
+            return mode == .day && !visibleDays.contains(offset)
+                ? "Подержи — открою " + DayMath.label(offset: offset)
+                : "На " + DayMath.label(offset: offset)
         case .backlog:
             return "В бэклог"
         case .quadrant(let raw):
@@ -272,9 +337,9 @@ struct PlannerScreen: View {
         if drag == nil || drag?.taskID != task.id {
             var grab: CGFloat = min(CGFloat(task.duration) / 60 * Tokens.hourHeight / 2, 20)
             let fromTimeline = task.day != nil && task.start != nil
-            if fromTimeline, let grid = zones["grid"], let start = task.start,
-               task.day == DayMath.day(offset: dayOffset) {
-                let blockTop = grid.minY + gridTopInset + CGFloat(start) / 60 * Tokens.hourHeight
+            if fromTimeline, let day = task.day, let start = task.start,
+               let column = zones["grid-\(DayMath.offset(of: day))"] {
+                let blockTop = column.minY + gridTopInset + CGFloat(start) / 60 * Tokens.hourHeight
                 grab = max(0, startLocation.y - blockTop)
             }
             drag = DragState(taskID: task.id, title: task.title, duration: task.duration, location: location,
@@ -301,12 +366,12 @@ struct PlannerScreen: View {
             task.start = nil
             task.backlogRank = (tasks.map { $0.backlogRank }.max() ?? 0) + 1
             showToast("Вернул в бэклог: «\(task.title)»")
-        case .grid(let start):
-            task.day = DayMath.day(offset: dayOffset)
+        case .grid(let day, let start):
+            task.day = DayMath.day(offset: day)
             task.start = start
             selectedID = task.id
-        case .allDay:
-            task.day = DayMath.day(offset: dayOffset)
+        case .allDay(let day):
+            task.day = DayMath.day(offset: day)
             task.start = nil
         case .dayTab(let offset):
             task.day = DayMath.day(offset: offset)
@@ -324,21 +389,26 @@ struct PlannerScreen: View {
         for raw in 1...4 {
             if let cell = zones["quad-\(raw)"], cell.contains(point) { return .quadrant(raw) }
         }
-        for offset in 0..<7 {
-            if let tab = zones["tab-\(offset)"], tab.contains(point) { return .dayTab(offset: offset) }
+        for (key, rect) in zones where key.hasPrefix("tab-") && rect.contains(point) {
+            if let offset = Int(key.dropFirst(4)) { return .dayTab(offset: offset) }
         }
-        if let allDay = zones["allday"], allDay.contains(point) { return .allDay }
-        if let grid = zones["grid"], grid.contains(point) {
-            let y = point.y - grab - grid.minY - gridTopInset
-            let minutes = Int((y / Tokens.hourHeight * 60 / 15).rounded()) * 15
-            return .grid(start: ClockGrid.clampedStart(minutes, duration: duration))
+        for offset in visibleDays {
+            if let allDay = zones["allday-\(offset)"], allDay.contains(point) { return .allDay(day: offset) }
+        }
+        guard let viewport = zones["timeline"], viewport.contains(point) else { return nil }
+        for offset in visibleDays {
+            if let column = zones["grid-\(offset)"], column.contains(point) {
+                let y = point.y - grab - column.minY - gridTopInset
+                let minutes = Int((y / Tokens.hourHeight * 60 / 15).rounded()) * 15
+                return .grid(day: offset, start: ClockGrid.clampedStart(minutes, duration: duration))
+            }
         }
         return nil
     }
 
     /// Задержка над вкладкой дня ~0,4 с открывает этот день.
     private func updateSpring(for target: DropTarget?) {
-        guard case .dayTab(let offset) = target, offset != dayOffset else {
+        guard mode == .day, case .dayTab(let offset) = target, offset != dayOffset else {
             springTask?.cancel()
             springOffset = nil
             return

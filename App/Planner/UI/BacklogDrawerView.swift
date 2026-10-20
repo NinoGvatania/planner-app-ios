@@ -14,6 +14,8 @@ struct BacklogDrawerView: View {
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
     let onEdit: (PlannerTask) -> Void
+    /// Сколько высоты экрана панель может занять в открытом виде (с клавиатурой — меньше).
+    var maxHeight: CGFloat = .infinity
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
@@ -22,7 +24,9 @@ struct BacklogDrawerView: View {
 
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
     private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * 50 + 8 }
-    private var openHeight: CGFloat { Tokens.drawerCollapsed + listHeight }
+    private var openHeight: CGFloat {
+        min(Tokens.drawerCollapsed + listHeight, max(Tokens.drawerCollapsed + 100, maxHeight))
+    }
 
     private var hint: String {
         guard let drag = drag else { return isOpen ? "Свернуть" : "Открыть" }
@@ -39,8 +43,9 @@ struct BacklogDrawerView: View {
         VStack(spacing: 0) {
             header
             list
-                .frame(height: max(0, height - Tokens.drawerCollapsed))
+                .frame(height: max(0, height - Tokens.drawerCollapsed), alignment: .top)
                 .clipped()
+                .contentShape(Rectangle())
             inputRow
         }
         .frame(maxWidth: .infinity)
@@ -55,6 +60,7 @@ struct BacklogDrawerView: View {
         .overlay(alignment: .top) {
             UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                .ignoresSafeArea(edges: .bottom)
         }
         .animation(.spring(duration: 0.28), value: isOpen)
         .animation(.interactiveSpring(), value: dragDelta)
@@ -69,7 +75,7 @@ struct BacklogDrawerView: View {
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
-            DragGesture(minimumDistance: 10)
+            DragGesture(minimumDistance: 10, coordinateSpace: .named("planner"))
                 .onChanged { value in
                     dragDelta = value.translation.height
                 }
@@ -147,7 +153,6 @@ struct BacklogDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.bottom, 6)
         }
-        .frame(height: listHeight, alignment: .top)
     }
 
     private func row(_ task: PlannerTask) -> some View {
@@ -229,7 +234,7 @@ struct BacklogDrawerView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .frame(height: 78, alignment: .top)
+        .frame(height: 60, alignment: .top)
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1) }
     }
 }
