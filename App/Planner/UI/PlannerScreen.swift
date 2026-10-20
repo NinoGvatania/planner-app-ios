@@ -43,6 +43,30 @@ struct PlannerScreen: View {
         let date = DayMath.day(offset: dayOffset)
         return visibleTasks.filter { $0.day == date }
     }
+    private var headerTitle: String {
+        switch mode {
+        case .day: return DayMath.title(offset: dayOffset)
+        case .weekList:
+            let d0 = DayMath.day(offset: dayOffset), d1 = DayMath.day(offset: dayOffset + 6)
+            return DayMath.monthIndex(d0) == DayMath.monthIndex(d1)
+                ? "\(DayMath.dayOfMonth(d0))–\(DayMath.dayOfMonth(d1)) \(DayMath.monthShort[DayMath.monthIndex(d0)])"
+                : "\(DayMath.dayOfMonth(d0)) \(DayMath.monthShort[DayMath.monthIndex(d0)]) – \(DayMath.dayOfMonth(d1)) \(DayMath.monthShort[DayMath.monthIndex(d1)])"
+        case .matrix: return "Матрица"
+        case .threeDays: return "3 дня"
+        }
+    }
+
+    private var headerSubtitle: String {
+        switch mode {
+        case .day: return DayMath.subtitle(offset: dayOffset)
+        case .weekList: return "Неделя списком"
+        case .matrix:
+            let n = tasks.filter { !$0.isDone && !$0.isRoutine }.count
+            return "\(n) " + DayMath.plural(n, "открытая задача", "открытые задачи", "открытых задач")
+        case .threeDays: return "Скоро"
+        }
+    }
+
     private var hoveredTab: Int? {
         if case .dayTab(let offset) = drag?.target { return offset }
         return nil
@@ -51,8 +75,8 @@ struct PlannerScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             HeaderView(
-                title: mode == .day ? DayMath.title(offset: dayOffset) : mode.title,
-                subtitle: mode == .day ? DayMath.subtitle(offset: dayOffset) : "Скоро",
+                title: headerTitle,
+                subtitle: headerSubtitle,
                 overdueCount: overdueTasks.count,
                 todayNumber: DayMath.dayOfMonth(today),
                 mode: $mode,
@@ -79,6 +103,10 @@ struct PlannerScreen: View {
                     onCreate: createTask
                 )
                 .id(dayOffset)
+            } else if mode == .matrix {
+                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded)
+            } else if mode == .weekList {
+                WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: mode.symbol)
@@ -217,6 +245,8 @@ struct PlannerScreen: View {
             return offset == dayOffset ? "На " + DayMath.label(offset: offset) : "Подержи — открою " + DayMath.label(offset: offset)
         case .backlog:
             return "В бэклог"
+        case .quadrant(let raw):
+            return Quadrant(rawValue: raw)?.name ?? ""
         case nil:
             return "Тащи на нужное время"
         }
@@ -267,12 +297,19 @@ struct PlannerScreen: View {
         case .dayTab(let offset):
             task.day = DayMath.day(offset: offset)
             showToast("«\(task.title)» — " + whenText(task))
+        case .quadrant(let raw):
+            guard let quadrant = Quadrant(rawValue: raw), quadrant != task.quadrant else { return }
+            task.quadrant = quadrant
+            showToast("«\(task.title)» → " + quadrant.name.lowercased())
         }
         NotificationScheduler.sync(tasks)
     }
 
     private func dropTarget(at point: CGPoint, duration: Int, grab: CGFloat) -> DropTarget? {
         if let drawer = zones["drawer"], drawer.contains(point) { return .backlog }
+        for raw in 1...4 {
+            if let cell = zones["quad-\(raw)"], cell.contains(point) { return .quadrant(raw) }
+        }
         for offset in 0..<7 {
             if let tab = zones["tab-\(offset)"], tab.contains(point) { return .dayTab(offset: offset) }
         }

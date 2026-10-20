@@ -7,6 +7,7 @@ enum DropTarget: Equatable {
     case dayTab(offset: Int)
     case allDay
     case grid(start: Int)
+    case quadrant(Int)
 }
 
 /// Текущее перетаскивание: что тянем и где палец (в координатах экрана «planner»).
