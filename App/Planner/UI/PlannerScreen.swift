@@ -13,6 +13,7 @@ struct PlannerScreen: View {
     @State private var showDone = true
     @State private var drawerOpen = false
     @State private var showOverdue = false
+    @State private var showVoice = false
     @State private var input = ""
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
@@ -163,7 +164,7 @@ struct PlannerScreen: View {
                 isOpen: $drawerOpen,
                 input: $input,
                 onSubmit: submitInput,
-                onVoice: { showToast("Голосовой ввод появится на этапе 2") },
+                onVoice: { showVoice = true },
                 onToggle: toggleDone,
                 drag: drag,
                 onDragChanged: dragChanged,
@@ -204,6 +205,9 @@ struct PlannerScreen: View {
             drag = nil
             springTask?.cancel()
             springOffset = nil
+        }
+        .fullScreenCover(isPresented: $showVoice) {
+            VoiceInputSheet(onDone: addDrafts)
         }
         .sheet(item: $editingTask) { task in
             TaskEditSheet(
@@ -546,6 +550,32 @@ struct PlannerScreen: View {
         let quadrantNote = parsed.quadrant.map { " · " + $0.name.lowercased() } ?? ""
         showToast("«\(parsed.title)» — \(whenText(task))\(quadrantNote)")
         NotificationScheduler.sync(tasks + [task])
+    }
+
+    /// Сохранить надиктованные задачи: без дня — в бэклог (и открыть его), с днём — на сетку.
+    private func addDrafts(_ drafts: [DraftTask]) {
+        guard !drafts.isEmpty else { return }
+        var rank = tasks.map { $0.backlogRank }.max() ?? 0
+        var created: [PlannerTask] = []
+        for draft in drafts {
+            rank += 1
+            let name = draft.project.trimmingCharacters(in: .whitespacesAndNewlines)
+            let task = PlannerTask(
+                title: draft.title.capitalizedFirst,
+                day: draft.dayOffset.map { DayMath.day(offset: $0) },
+                start: draft.start,
+                duration: draft.duration,
+                quadrant: Quadrant(rawValue: draft.quadrantRaw),
+                project: name.isEmpty ? nil : findOrCreateProject(named: name.capitalizedFirst),
+                backlogRank: rank
+            )
+            context.insert(task)
+            created.append(task)
+        }
+        if created.contains(where: { $0.isInBacklog }) { drawerOpen = true }
+        let n = created.count
+        showToast("Добавил \(n) " + DayMath.plural(n, "задачу", "задачи", "задач"))
+        NotificationScheduler.sync(tasks + created)
     }
 
     private func whenText(_ task: PlannerTask) -> String {
