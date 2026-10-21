@@ -18,6 +18,7 @@ enum NotificationScheduler {
     /// и заодно планирует экспорт в Календарь, если он включён.
     static func sync(_ tasks: [PlannerTask]) {
         CalendarSync.schedule(tasks)
+        WidgetBridge.update(tasks)
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
         let lead = lead
