@@ -35,6 +35,23 @@ final class DictationSplitterTests: XCTestCase {
                        ["позвонить маме", "купить хлеб", "записаться к врачу"])
     }
 
+    /// Лингвистика платформы: глаголы узнаются по части речи, а не только по «-ть».
+    private struct FakeLinguistics: Linguistics {
+        let verbs: Set<String>
+        func isVerb(_ word: String) -> Bool { verbs.contains(word) }
+    }
+
+    func testLinguisticsFindsImperatives() {
+        let linguistics = FakeLinguistics(verbs: ["купи", "позвони", "вынеси"])
+        XCTAssertEqual(DictationSplitter.split("купи хлеб и позвони маме", linguistics: linguistics), ["купи хлеб", "позвони маме"])
+        XCTAssertEqual(DictationSplitter.split("купи хлеб и молоко", linguistics: linguistics), ["купи хлеб и молоко"])
+        // Без лингвистики повелительное наклонение не распознаётся — остаётся одной задачей.
+        XCTAssertEqual(DictationSplitter.split("купи хлеб и позвони маме"), ["купи хлеб и позвони маме"])
+        // Число «пять» лингвистика не превращает в глагол, даже если бы сказала «да».
+        let greedy = FakeLinguistics(verbs: ["пять", "купить"])
+        XCTAssertEqual(DictationSplitter.split("Купить хлеб и пять яблок", linguistics: greedy), ["Купить хлеб и пять яблок"])
+    }
+
     func testEmptyAndJunk() {
         XCTAssertEqual(DictationSplitter.split(""), [])
         XCTAssertEqual(DictationSplitter.split(" . , "), [])

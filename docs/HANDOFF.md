@@ -15,14 +15,16 @@
 - `PlannerCore/` — Swift‑пакет: `QuickAddParser` (правила быстрого ввода, перенесены из `parse()` прототипа
   один в один), `DayLayout` (колонки для пересекающихся задач), `FreeSlotScheduler` (раскладка просроченных
   по свободным окнам), `ClockGrid` (минуты ↔ точки, шаг 15 минут, формат времени), `DictationSplitter`
-  (деление надиктованного текста на задачи), `SpeechCleanup` (чистка речевого мусора), `WidgetSnapshot`
-  (снимок дня для виджета, общий для приложения и расширения). Тесты — таблица фраз и кейсы.
+  (деление надиктованного текста на задачи; принимает `Linguistics` — части речи от платформы),
+  `SpeechCleanup` (чистка речевого мусора), `WidgetSnapshot` (снимок дня для виджета, общий для
+  приложения и расширения). Тесты — таблица фраз и кейсы.
 - `App/` — приложение. `Model/` — SwiftData (`PlannerTask`, `Project`, `Routine`, `SeedData`);
   `State/` — `DayMath` (даты и русские подписи), `DragState` (цель сброса и зоны через PreferenceKey),
   `HoldDragGesture` (удержание → перенос на UIKit‑распознавателе), `NotificationScheduler` (уведомления;
   заодно дёргает `CalendarSync` и `WidgetBridge`), `CalendarSync` (EventKit), `WidgetBridge`, `Streak`
-  (серия дней), `RoutineManager`, `SpeechRecorder` (диктовка), `TaskExtractor` (разбор расшифровки:
-  Claude API по ключу или правила), `KeychainStore`, `DraftTask`;
+  (серия дней), `RoutineManager`, `SpeechRecorder` (диктовка), `TaskExtractor` + `OnDeviceExtractor`
+  (разбор расшифровки на устройстве: Apple Intelligence через FoundationModels, иначе правила),
+  `AppleLinguistics` (NaturalLanguage: глагол или нет), `DraftTask`;
   `UI/` — `PlannerScreen` (единственный экран и вся оркестровка жестов), `DayTimelineView` (сетка на 1 или 7
   дней), `MonthView` (пейджер из трёх месяцев), `MatrixView` (2×2 на экран, проваливание, доска целей),
   `ProjectsView`, `DashboardView` (Swift Charts), `WeekListView`, `BacklogDrawerView`, `TaskEditSheet`,

@@ -2,7 +2,8 @@ import PlannerCore
 import SwiftUI
 
 /// Голосовой ввод: сначала экран слушает всё подряд и показывает расшифровку, по галочке весь текст
-/// разбирается на задачи (Claude по ключу API или правила), потом карточки можно поправить и сохранить.
+/// разбирается на задачи прямо на устройстве (Apple Intelligence или правила), потом карточки можно
+/// поправить и сохранить.
 struct VoiceInputSheet: View {
     let onDone: ([DraftTask]) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -159,8 +160,8 @@ struct VoiceInputSheet: View {
                 .font(.system(size: 14))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Tokens.caption)
-            if !TaskExtractor.hasKey {
-                Text("Без ключа Claude API деление идёт по правилам: точка, пауза, «а ещё», «потом». Ключ — в настройках.")
+            if case .unavailable = OnDeviceExtractor.status {
+                Text("Разбор идёт на iPhone по правилам: точка, пауза, «а ещё», «потом», «и» между действиями.")
                     .font(.system(size: 12.5))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Tokens.muted)
@@ -253,7 +254,7 @@ struct VoiceInputSheet: View {
             // «Надиктовать ещё» добавляет к уже разобранным карточкам, а не заменяет их.
             drafts.append(contentsOf: result.drafts)
             switch result.source {
-            case .model: sourceNote = "Разобрано моделью"
+            case .model: sourceNote = "Разобрано Apple Intelligence на устройстве"
             case .rules(let reason): sourceNote = reason ?? "Разобрано правилами"
             }
             stage = .review

@@ -32,13 +32,15 @@ public enum DictationSplitter {
         "части", "новости", "кости", "вести", "масти", "сласти", "ярость", "радость", "область", "скорость",
     ]
 
-    public static func split(_ text: String) -> [String] {
+    /// Разделить текст на задачи. `linguistics` — части речи от платформы (NaturalLanguage на iPhone):
+    /// с ними «купи хлеб и позвони маме» тоже делится на два действия.
+    public static func split(_ text: String, linguistics: Linguistics? = nil) -> [String] {
         // Конец предложения; точка между цифрами («в 9.30») остаётся.
         let withBreaks = text.replacingOccurrences(of: "[!?;]+|(?<!\\d)\\.+|\\.+(?!\\d)", with: "\n", options: .regularExpression)
         var pieces: [String] = []
         for line in withBreaks.components(separatedBy: "\n") {
             for part in splitByHardConnectors(line) {
-                pieces.append(contentsOf: splitByConjunctions(part))
+                pieces.append(contentsOf: splitByConjunctions(part, linguistics: linguistics))
             }
         }
         return pieces.map(clean).filter { !$0.isEmpty }
@@ -67,7 +69,7 @@ public enum DictationSplitter {
         return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }()
 
-    private static func splitByConjunctions(_ text: String) -> [String] {
+    private static func splitByConjunctions(_ text: String, linguistics: Linguistics?) -> [String] {
         let ns = text as NSString
         let matches = softPattern.matches(in: text, range: NSRange(location: 0, length: ns.length))
         guard !matches.isEmpty else { return [text] }
@@ -87,7 +89,7 @@ public enum DictationSplitter {
         while index + 1 < segments.count {
             let separator = segments[index].separator
             let next = segments[index + 1].text
-            if hasVerb(current) && hasVerb(next) {
+            if hasAction(current, linguistics) && hasAction(next, linguistics) {
                 pieces.append(current)
                 current = next
             } else {
@@ -102,6 +104,17 @@ public enum DictationSplitter {
     private static let verbPattern = try! NSRegularExpression(
         pattern: "(?<![а-яё])[а-яё]{2,}(?:ть|ти|чь|ться|тись|чься)(?![а-яё])"
     )
+
+    /// Есть ли в куске действие: глагол в неопределённой форме по окончанию, а с лингвистикой —
+    /// любой глагол по части речи («купи», «позвони»). Числительные и существительные на «-ть» не в счёт.
+    static func hasAction(_ text: String, _ linguistics: Linguistics?) -> Bool {
+        if hasVerb(text) { return true }
+        guard let linguistics else { return false }
+        return words(in: text).contains { word in
+            let low = word.lowercased()
+            return !notVerbs.contains(low) && linguistics.isVerb(low)
+        }
+    }
 
     /// Есть ли глагол в неопределённой форме: «позвонить», «купить», «записаться», «помочь».
     static func hasVerb(_ text: String) -> Bool {
