@@ -15,13 +15,22 @@
 - `PlannerCore/` — Swift‑пакет: `QuickAddParser` (правила быстрого ввода, перенесены из `parse()` прототипа
   один в один), `DayLayout` (колонки для пересекающихся задач), `FreeSlotScheduler` (раскладка просроченных
   по свободным окнам), `ClockGrid` (минуты ↔ точки, шаг 15 минут, формат времени), `DictationSplitter`
-  (деление надиктованного текста на задачи). Тесты — таблица фраз и кейсы.
+  (деление надиктованного текста на задачи), `SpeechCleanup` (чистка речевого мусора), `WidgetSnapshot`
+  (снимок дня для виджета, общий для приложения и расширения). Тесты — таблица фраз и кейсы.
 - `App/` — приложение. `Model/` — SwiftData (`PlannerTask`, `Project`, `Routine`, `SeedData`);
   `State/` — `DayMath` (даты и русские подписи), `DragState` (цель сброса и зоны через PreferenceKey),
-  `NotificationScheduler`, `RoutineManager`, `SpeechRecorder` (диктовка), `DraftTask`;
+  `HoldDragGesture` (удержание → перенос на UIKit‑распознавателе), `NotificationScheduler` (уведомления;
+  заодно дёргает `CalendarSync` и `WidgetBridge`), `CalendarSync` (EventKit), `WidgetBridge`, `Streak`
+  (серия дней), `RoutineManager`, `SpeechRecorder` (диктовка), `TaskExtractor` (разбор расшифровки:
+  Claude API по ключу или правила), `KeychainStore`, `DraftTask`;
   `UI/` — `PlannerScreen` (единственный экран и вся оркестровка жестов), `DayTimelineView` (сетка на 1 или 7
-  дней), `MonthView`, `MatrixView`, `WeekListView`, `BacklogDrawerView`, `TaskEditSheet`, `VoiceInputSheet`,
-  `DraftEditSheet`, `OverdueSheet`, `HeaderView`, `WeekStripView`, `TaskBlockView`, `Tokens`.
+  дней), `MonthView` (пейджер из трёх месяцев), `MatrixView` (2×2 на экран, проваливание, доска целей),
+  `ProjectsView`, `DashboardView` (Swift Charts), `WeekListView`, `BacklogDrawerView`, `TaskEditSheet`,
+  `VoiceInputSheet`, `DraftEditSheet`, `OverdueSheet`, `SettingsSheet`, `StreakSheet`, `HeaderView`
+  (кнопка «назад», заголовок‑меню видов, меню «…»), `WeekStripView` (пейджер недель), `TaskBlockView`, `Tokens`.
+- `App/QuickWidget/` — расширение‑виджет «Сегодня» (своя цель `QuickWidget` в `project.pbxproj`, читает
+  `WidgetSnapshot` из контейнера группы `group.com.ninogvatania.planner`; App Groups прописаны
+  в `Planner/Planner.entitlements` и `QuickWidget/QuickWidget.entitlements`).
 - `docs/NIGHT-REPORT.md` — что сделано за ночь, что не проверено, утренний чек-лист.
 - `CLAUDE.md` — правила проекта.
 
@@ -33,9 +42,20 @@
   в `project.pbxproj`) повышается при каждом вливании в `main` и виден в меню вида.
 - На Mac: клон лежит в `~/planner-app-cloud`; после сообщения «готово» — `git pull` и ⌘R на iPhone.
 - Зоны сброса: каждый вид сообщает рамки своих зон (`.reportZone("tab-3")`, `"grid-0"`, `"allday-0"`,
-  `"quad-1"`, `"drawer"`, `"timeline"`) в координатах `"planner"`, `PlannerScreen.dropTarget` выбирает цель.
-  Жест переноса — удержание 0,3 с + DragGesture на самом элементе; чтобы он не оборвался при смене дня,
-  перетаскиваемый блок остаётся в первой колонке невидимым («фантом»).
+  `"quad-1"`, `"project-Имя"` / `"project-"` (без проекта), `"drawer"`, `"timeline"`) в координатах `"planner"`,
+  `PlannerScreen.dropTarget` выбирает цель. Жест переноса — `HoldDragGesture` (UIKit‑распознаватель
+  удержания 0,3 с): в сетке и секциях он висит на строке, в бэклоге — на контейнере списка (строку
+  находим по рамке), потому что ячейка `List` может быть уничтожена посреди жеста. Чтобы перенос
+  не оборвался при смене дня, перетаскиваемый блок остаётся в первой колонке невидимым («фантом»).
+  В матрице и проектах во время удержания поверх содержимого появляется «доска» — контейнеры‑цели
+  на весь экран (`allowsHitTesting(false)`, зоны сообщает только доска); строки под ней не исчезают,
+  поэтому жест живёт.
+- Свайпы между днями / неделями / месяцами: день — одна сетка со смещением `pageX` (уезжает, день
+  подменяется, въезжает с другой стороны); полоска недели и месяц — пейджер из трёх страниц
+  (`offset(-width + dragX)`), зоны сообщает только средняя. Ось жеста фиксируется на первых 12–14 pt,
+  пока задачу держат — свайп не работает.
+- Навигация: `navStack` в `PlannerScreen` (месяц → день, неделя → день) даёт кнопку «назад» в шапке;
+  выбор вида из меню стек сбрасывает.
   Установка на телефон без Mac невозможна (подпись); полностью без Mac — только Xcode Cloud + TestFlight
   при платном аккаунте разработчика.
 - Прототип — эталон жестов и парсера; новые виды (неделя сеткой, месяц, диктовка) сделаны сразу в Swift
