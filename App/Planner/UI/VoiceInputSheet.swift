@@ -2,19 +2,19 @@ import PlannerCore
 import SwiftUI
 
 /// Голосовой ввод: говоришь всё подряд — задачи появляются карточками по мере распознавания.
-/// Пауза делает карточки редактируемыми (тап — правка, крестик — удалить), «Ещё» продолжает диктовку,
-/// «Готово» сохраняет всё. Распознавание — системное, по-русски.
+/// Пауза дорабатывает последние слова и делает карточки редактируемыми (тап — правка, крестик — удалить),
+/// микрофон продолжает диктовку, «Готово» сохраняет всё. Распознавание — системное, по-русски.
 struct VoiceInputSheet: View {
     let onDone: ([DraftTask]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var recorder = SpeechRecorder()
-    /// Подтверждённые карточки (после паузы) — их можно править и удалять.
+    /// Подтверждённые карточки (законченные заходы) — их можно править и удалять.
     @State private var drafts: [DraftTask] = []
+    /// Карточки текущего захода; идентификаторы сохраняются, пока текст уточняется.
+    @State private var live: [DraftTask] = []
     @State private var editing: DraftTask?
-    @State private var levels: [Double] = Array(repeating: 0, count: 28)
 
-    private var liveDrafts: [DraftTask] { DraftTask.drafts(from: recorder.liveText) }
-    private var isEmpty: Bool { drafts.isEmpty && liveDrafts.isEmpty }
+    private var isEmpty: Bool { drafts.isEmpty && live.isEmpty }
 
     private var statusText: String {
         switch recorder.status {
@@ -73,7 +73,7 @@ struct VoiceInputSheet: View {
                         ForEach(drafts) { draft in
                             card(draft, live: false)
                         }
-                        ForEach(liveDrafts) { draft in
+                        ForEach(live) { draft in
                             card(draft, live: true)
                         }
                         if isEmpty {
@@ -84,7 +84,7 @@ struct VoiceInputSheet: View {
                     .padding(.top, 14)
                     .padding(.bottom, 20)
                 }
-                .animation(.easeOut(duration: 0.2), value: drafts.count + liveDrafts.count)
+                .animation(.easeOut(duration: 0.2), value: drafts.count + live.count)
 
                 controls
             }
@@ -93,12 +93,12 @@ struct VoiceInputSheet: View {
         .task {
             recorder.onSegmentFinished = { text in
                 drafts.append(contentsOf: DraftTask.drafts(from: text))
+                live = []
             }
             await recorder.start()
         }
-        .onChange(of: recorder.level) { _, value in
-            levels.removeFirst()
-            levels.append(value)
+        .onChange(of: recorder.liveText) { _, text in
+            live = DraftTask.drafts(from: text, reusing: live.map(\.id))
         }
         .onDisappear { recorder.shutdown() }
         .sheet(item: $editing) { draft in
@@ -152,6 +152,7 @@ struct VoiceInputSheet: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Tokens.caption)
                         .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Удалить: " + draft.title)
             }
@@ -201,7 +202,7 @@ struct VoiceInputSheet: View {
             HStack(spacing: 16) {
                 Button {
                     if recorder.isListening {
-                        pauseAndCommit()
+                        recorder.pause()
                     } else {
                         Task { await recorder.start() }
                     }
@@ -212,9 +213,10 @@ struct VoiceInputSheet: View {
                         .background(Tokens.cluster, in: Circle())
                         .overlay(Circle().strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
                 }
+                .disabled(recorder.status == .idle)
                 .accessibilityLabel(recorder.isListening ? "Пауза" : "Продолжить диктовку")
 
-                waveform
+                WaveformView(recorder: recorder)
                     .frame(maxWidth: .infinity)
                     .frame(height: 36)
 
@@ -234,7 +236,21 @@ struct VoiceInputSheet: View {
         .padding(.bottom, 20)
     }
 
-    private var waveform: some View {
+    private func finish() {
+        // Текущий заход (если распознаватель ещё не отдал его) берём как есть.
+        let pending = DraftTask.drafts(from: recorder.liveText)
+        recorder.shutdown()
+        onDone(drafts + pending)
+        dismiss()
+    }
+}
+
+/// Волна уровня сигнала: живёт отдельно, чтобы частые обновления уровня не перерисовывали карточки.
+private struct WaveformView: View {
+    let recorder: SpeechRecorder
+    @State private var levels: [Double] = Array(repeating: 0, count: 28)
+
+    var body: some View {
         HStack(spacing: 3) {
             ForEach(Array(levels.enumerated()), id: \.offset) { _, value in
                 Capsule()
@@ -243,18 +259,9 @@ struct VoiceInputSheet: View {
             }
         }
         .animation(.linear(duration: 0.08), value: levels)
-    }
-
-    private func pauseAndCommit() {
-        recorder.pause()
-        drafts.append(contentsOf: liveDrafts)
-        recorder.clearLive()
-    }
-
-    private func finish() {
-        if recorder.isListening { pauseAndCommit() }
-        recorder.shutdown()
-        onDone(drafts)
-        dismiss()
+        .onChange(of: recorder.level) { _, value in
+            levels.removeFirst()
+            levels.append(value)
+        }
     }
 }

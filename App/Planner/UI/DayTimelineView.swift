@@ -1,6 +1,20 @@
 import PlannerCore
 import SwiftUI
 
+enum HandleEdge { case top, bottom }
+
+/// Активное растягивание ручкой: обычный класс, не Observable — читается из цикла автопрокрутки
+/// и из жеста, не перерисовывая сетку на каждое касание.
+final class ResizeTracker {
+    var edge: HandleEdge?
+    var originalStart = 0
+    var originalEnd = 0
+    /// Последнее положение пальца в координатах «planner».
+    var fingerY: CGFloat = 0
+    /// Насколько палец был ниже кромки блока в момент захвата (в координатах содержимого).
+    var grab: CGFloat = 0
+}
+
 /// Сетка 0:00–24:00 на один или три дня: строка «весь день», колонки дней, блоки задач.
 /// Тап по блоку выделяет его (второй тап — редактор), ручка снизу растягивает, удержание начинает
 /// перетаскивание; тап по свободному месту создаёт задачу, удержание с протягиванием — задачу нужной длины.
@@ -40,6 +54,7 @@ struct DayTimelineView: View {
     @State private var viewport: CGRect = .zero
     @State private var autoScroll: Task<Void, Never>?
     @State private var autoScrollDirection = 0
+    @State private var resizeTracker = ResizeTracker()
 
     private let topInset: CGFloat = 10
     private let bottomInset: CGFloat = 26
@@ -168,6 +183,7 @@ struct DayTimelineView: View {
                 y = next
                 scrollPosition.scrollTo(y: y)
                 scroll.offset = y
+                if resizeTracker.edge != nil { applyResize(plannerY: resizeTracker.fingerY) }
                 onAutoScrollTick?()
                 try? await Task.sleep(for: .milliseconds(16))
             }
@@ -230,6 +246,7 @@ struct DayTimelineView: View {
                 .foregroundStyle(Tokens.muted)
                 .multilineTextAlignment(.trailing)
                 .frame(width: Tokens.gutter - 7, alignment: .trailing)
+                .padding(.trailing, 7)
                 .padding(.top, 9)
             ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                 let hovered = drag?.target == .allDay(day: day)
@@ -242,7 +259,6 @@ struct DayTimelineView: View {
                 .frame(maxWidth: .infinity, minHeight: 40, alignment: .top)
                 .padding(.horizontal, narrowColumns ? 1 : 3)
                 .padding(.vertical, 6)
-                .padding(.leading, index == 0 ? 7 : 0)
                 .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
                 .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
                 .reportZone("allday-\(day)")
@@ -260,7 +276,8 @@ struct DayTimelineView: View {
                         .strokeBorder(style.dot, lineWidth: 2)
                         .background(Circle().fill(task.isDone ? style.dot : Color.clear))
                         .frame(width: 13, height: 13)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
@@ -329,18 +346,20 @@ struct DayTimelineView: View {
                 if drag == nil, let selected = list.first(where: { $0.id == selectedID && $0.day == date }),
                    let placement = placed[selected.id.uuidString] {
                     resizeHandle(selected, edge: .top, placement: placement, columnLeft: left, columnWidth: columnWidth)
-                        .zIndex(3)
+                        .zIndex(4)
                     resizeHandle(selected, edge: .bottom, placement: placement, columnLeft: left, columnWidth: columnWidth)
-                        .zIndex(3)
+                        .zIndex(4)
                 }
             }
 
             if let drag = drag, case .grid(let day, let start) = drag.target, let index = days.firstIndex(of: day) {
                 preview(start: start, duration: drag.duration, columnLeft: Tokens.gutter + columnWidth * CGFloat(index), columnWidth: columnWidth)
+                    .zIndex(5)
             }
 
             if let creating = creating, let index = days.firstIndex(of: creating.day) {
                 preview(start: creating.start, duration: creating.duration, columnLeft: Tokens.gutter + columnWidth * CGFloat(index), columnWidth: columnWidth)
+                    .zIndex(5)
             }
 
             if let index = days.firstIndex(of: 0) {
@@ -363,6 +382,7 @@ struct DayTimelineView: View {
                     }
                 }
                 .allowsHitTesting(false)
+                .zIndex(3)
             }
         }
         .frame(height: contentHeight)
@@ -408,7 +428,7 @@ struct DayTimelineView: View {
         let laneWidth = columnWidth / CGFloat(placement.laneCount)
         let width = max(0, laneWidth - 6)
         let start = start(of: task)
-        let dur = duration(of: task)
+        let dur = min(duration(of: task), ClockGrid.dayEnd - start)
         let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
         let height = max(CGFloat(dur) / 60 * Tokens.hourHeight - 2, 24)
         let selected = task.id == selectedID && drag == nil
@@ -439,49 +459,60 @@ struct DayTimelineView: View {
         .gesture(dragGesture(for: task))
     }
 
-    private enum HandleEdge { case top, bottom }
-
     /// Ручка растягивания: нижняя двигает конец, верхняя — начало (конец на месте). Шаг 15 минут.
-    /// Тап по ручке без движения — как тап по выделенному блоку: открывает редактор.
+    /// Зона нажатия: 12 pt снаружи блока и до 24 pt внутри (у коротких блоков — до половины высоты),
+    /// правее кружка-галочки. Тап без движения внутри блока открывает редактор, снаружи — снимает выделение.
     private func resizeHandle(_ task: PlannerTask, edge: HandleEdge, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
         let laneWidth = columnWidth / CGFloat(placement.laneCount)
         let width = max(0, laneWidth - 6)
         let start = start(of: task)
         let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
-        let height = max(CGFloat(duration(of: task)) / 60 * Tokens.hourHeight - 2, 24)
-        let centerX = columnLeft + laneWidth * CGFloat(placement.lane) + 3 + width / 2
+        let height = max(CGFloat(min(duration(of: task), ClockGrid.dayEnd - start)) / 60 * Tokens.hourHeight - 2, 24)
+        let left = columnLeft + laneWidth * CGFloat(placement.lane) + 3
+        let checkbox: CGFloat = laneWidth < 76 ? 0 : (laneWidth < 160 ? 26 : 34)
+        let zoneWidth = min(88, max(24, width - checkbox))
+        let zoneCenterX = left + checkbox + (width - checkbox) / 2
+        let outside: CGFloat = 12
+        let inside = min(24, height / 2)
+        let zoneHeight = outside + inside
+        let edgeY = edge == .top ? top : top + height
+        let zoneCenterY = edge == .top ? top - outside + zoneHeight / 2 : top + height + outside - zoneHeight / 2
         let originalStart = task.start ?? 0
         let originalEnd = originalStart + task.duration
         return Capsule()
             .fill(Color.white)
             .frame(width: 44, height: 6)
             .overlay(Capsule().stroke(Tokens.background, lineWidth: 2))
-            .frame(width: min(88, width + 6), height: 36)
+            .offset(x: left + width / 2 - zoneCenterX, y: edgeY - zoneCenterY)
+            .frame(width: zoneWidth, height: zoneHeight)
             .contentShape(Rectangle())
-            .position(x: centerX, y: edge == .top ? top : top + height)
+            .position(x: zoneCenterX, y: zoneCenterY)
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .named("planner"))
                     .onChanged { value in
-                        let y = gridY(fromPlannerY: value.location.y) - topInset
-                        let minutes = Int((y / Tokens.hourHeight * 60 / 15).rounded()) * 15
-                        switch edge {
-                        case .bottom:
-                            let newDuration = max(15, min(minutes - start, ClockGrid.dayEnd - start))
-                            if newDuration != liveDuration { liveDuration = newDuration }
-                        case .top:
-                            let newStart = max(0, min(originalEnd - 15, minutes))
-                            if newStart != liveStart {
-                                liveStart = newStart
-                                liveDuration = originalEnd - newStart
-                            }
+                        let moved = abs(value.translation.height) > 3 || abs(value.translation.width) > 3
+                        guard moved else { return }
+                        if resizeTracker.edge == nil {
+                            resizeTracker.edge = edge
+                            resizeTracker.originalStart = originalStart
+                            resizeTracker.originalEnd = originalEnd
+                            resizeTracker.grab = gridY(fromPlannerY: value.startLocation.y) - edgeY
                         }
+                        resizeTracker.fingerY = value.location.y
+                        applyResize(plannerY: value.location.y)
                         updateAutoScroll(fingerY: value.location.y)
                     }
                     .onEnded { value in
                         stopAutoScroll()
+                        resizeTracker.edge = nil
                         let moved = abs(value.translation.height) > 3 || abs(value.translation.width) > 3
                         if !moved {
-                            onEdit(task)
+                            let y = gridY(fromPlannerY: value.startLocation.y)
+                            if y >= top && y <= top + height {
+                                onEdit(task)
+                            } else {
+                                selectedID = nil
+                            }
                         } else if let newStart = liveStart, let newDuration = liveDuration,
                                   newStart != originalStart || newDuration != task.duration {
                             onRetime(task, newStart, newDuration)
@@ -493,6 +524,26 @@ struct DayTimelineView: View {
                     }
             )
             .accessibilityHidden(true)
+    }
+
+    /// Пересчитать начало или длительность по положению пальца (координаты «planner») с учётом захвата;
+    /// вызывается и из жеста, и из цикла автопрокрутки, пока палец стоит у края.
+    private func applyResize(plannerY: CGFloat) {
+        guard let edge = resizeTracker.edge else { return }
+        let y = gridY(fromPlannerY: plannerY) - resizeTracker.grab - topInset
+        let minutes = Int((y / Tokens.hourHeight * 60 / 15).rounded()) * 15
+        switch edge {
+        case .bottom:
+            let start = resizeTracker.originalStart
+            let newDuration = max(15, min(minutes - start, ClockGrid.dayEnd - start))
+            if newDuration != liveDuration { liveDuration = newDuration }
+        case .top:
+            let newStart = max(0, min(resizeTracker.originalEnd - 15, minutes))
+            if newStart != liveStart {
+                liveStart = newStart
+                liveDuration = resizeTracker.originalEnd - newStart
+            }
+        }
     }
 
     private func dragGesture(for task: PlannerTask) -> some Gesture {
@@ -518,7 +569,7 @@ struct DayTimelineView: View {
                     .foregroundStyle(Tokens.accent)
             )
             .overlay(alignment: .topLeading) {
-                Text(ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + duration))
+                Text(width < 90 ? ClockGrid.format(minutes: start) : ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + duration))
                     .font(.system(size: 12, weight: .bold))
                     .monospacedDigit()
                     .foregroundStyle(Tokens.accent)

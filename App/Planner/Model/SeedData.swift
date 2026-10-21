@@ -4,9 +4,24 @@ import SwiftData
 
 /// Демонстрационные данные — те же, что в прототипе, относительно сегодняшнего дня.
 enum SeedData {
+    private static let colorsAssignedKey = "projectColorsAssigned"
+    private static let seedColors: [String: Int] = ["Учёба": 0, "Дом": 2, "Спорт": 3, "Рутины": 4]
+
+    /// Одноразово раздать цвета проектам, созданным до появления `colorIndex` (у них всех 0).
+    static func assignProjectColorsIfNeeded(in context: ModelContext) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: colorsAssignedKey) else { return }
+        defaults.set(true, forKey: colorsAssignedKey)
+        let projects = (try? context.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.name)]))) ?? []
+        for (index, project) in projects.enumerated() {
+            project.colorIndex = seedColors[project.name] ?? index % ProjectPalette.colors.count
+        }
+    }
+
     static func seedIfNeeded(in context: ModelContext) {
         let count = (try? context.fetchCount(FetchDescriptor<PlannerTask>())) ?? 0
         guard count == 0 else { return }
+        UserDefaults.standard.set(true, forKey: colorsAssignedKey)
 
         let study = Project(name: "Учёба", colorIndex: 0)
         let home = Project(name: "Дом", colorIndex: 2)
@@ -62,7 +77,7 @@ enum SeedData {
         task("Обновить резюме", day: nil, start: nil, duration: 60, quadrant: .important)
         task("Записаться к стоматологу", day: nil, start: nil, duration: 15, quadrant: .urgentImportant)
 
-        context.insert(Routine(title: "Умыться и почистить зубы", start: h(8), duration: 30, quadrant: .urgent))
-        context.insert(Routine(title: "Завтрак", start: h(8, 30), duration: 30, quadrant: .urgent))
+        context.insert(Routine(title: "Умыться и почистить зубы", start: h(8), duration: 30, quadrant: .urgent, projectName: "Рутины"))
+        context.insert(Routine(title: "Завтрак", start: h(8, 30), duration: 30, quadrant: .urgent, projectName: "Рутины"))
     }
 }

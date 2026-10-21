@@ -60,7 +60,9 @@ struct WeekListView: View {
         .padding(.bottom, 4)
         .background(hovered ? Tokens.accent.opacity(0.12) : Color(hex: 0x141518), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : Color.white.opacity(0.05), lineWidth: 1))
-        .reportZone("tab-\(offset)")
+        // Секции лежат в ScrollView: рамки сообщаются только во время перетаскивания,
+        // иначе каждый кадр прокрутки перерисовывал бы весь экран.
+        .reportZone("tab-\(offset)", enabled: drag != nil)
     }
 
     private func row(_ task: PlannerTask) -> some View {
@@ -85,6 +87,7 @@ struct WeekListView: View {
                     }
                 }
                 .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)

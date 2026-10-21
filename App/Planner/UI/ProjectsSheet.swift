@@ -23,7 +23,7 @@ struct ProjectsSheet: View {
                     }
                 }
                 Section(projects.isEmpty ? "Проектов пока нет" : "Проекты") {
-                    ForEach(projects, id: \.name) { project in
+                    ForEach(projects) { project in
                         ProjectRow(project: project, isNameTaken: { name in
                             projects.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame && $0 !== project }
                         })
@@ -61,36 +61,42 @@ struct ProjectsSheet: View {
     }
 }
 
-/// Строка проекта: название (редактируется на месте), число задач, палитра цветов.
+/// Строка проекта: название правится на месте и сохраняется по Return или при потере фокуса,
+/// число задач, палитра цветов (цели 44 pt).
 private struct ProjectRow: View {
     @Bindable var project: Project
     let isNameTaken: (String) -> Bool
     @State private var name = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Circle().fill(project.color).frame(width: 14, height: 14)
                 TextField("Название", text: $name)
                     .textInputAutocapitalization(.sentences)
-                    .onSubmit(rename)
-                    .onChange(of: name) { _, _ in rename() }
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onChange(of: focused) { _, isFocused in
+                        if !isFocused { commit() }
+                    }
                 Spacer(minLength: 0)
                 Text("\(project.tasks.count)")
                     .font(.system(size: 13, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(Tokens.muted)
             }
-            HStack(spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: Tokens.hitTarget), spacing: 2)], spacing: 2) {
                 ForEach(Array(ProjectPalette.colors.indices), id: \.self) { index in
                     Button {
                         project.colorIndex = index
                     } label: {
                         Circle()
                             .fill(ProjectPalette.color(index))
-                            .frame(width: 22, height: 22)
+                            .frame(width: 24, height: 24)
                             .overlay(Circle().strokeBorder(Color.white, lineWidth: project.colorIndex == index ? 2.5 : 0))
-                            .frame(width: 28, height: 28)
+                            .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Цвет \(index + 1)")
@@ -100,11 +106,17 @@ private struct ProjectRow: View {
         }
         .padding(.vertical, 4)
         .onAppear { name = project.name }
+        .onDisappear(perform: commit)
     }
 
-    private func rename() {
+    private func commit() {
         let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, value != project.name, !isNameTaken(value) else { return }
+        guard !value.isEmpty, !isNameTaken(value) else {
+            name = project.name
+            return
+        }
+        guard value != project.name else { return }
         project.name = value
+        name = value
     }
 }

@@ -121,7 +121,10 @@ struct PlannerScreen: View {
                 ),
                 onOverdue: { showOverdue = true },
                 onToday: {
-                    withAnimation { dayOffset = 0 }
+                    withAnimation {
+                        dayOffset = 0
+                        if mode == .matrix || mode == .weekList { mode = .day }
+                    }
                     scrollToNowRequest += 1
                 },
                 onProjects: { showProjects = true }
@@ -209,15 +212,16 @@ struct PlannerScreen: View {
         }
         .task {
             SeedData.seedIfNeeded(in: context)
-            RoutineManager.materialize(in: context)
+            SeedData.assignProjectColorsIfNeeded(in: context)
+            let created = RoutineManager.materialize(in: context)
             NotificationScheduler.requestPermission()
-            NotificationScheduler.sync(tasks)
+            NotificationScheduler.sync(tasks + created)
         }
         .onChange(of: scenePhase) { _, phase in
             // Вернулись в приложение (возможно, уже другой день): досоздать рутины, обновить напоминания.
             guard phase == .active else { return }
-            RoutineManager.materialize(in: context)
-            NotificationScheduler.sync(tasks)
+            let created = RoutineManager.materialize(in: context)
+            NotificationScheduler.sync(tasks + created)
         }
         .onChange(of: mode) { _, _ in
             selectedID = nil
@@ -590,10 +594,12 @@ struct PlannerScreen: View {
         var rank = tasks.map { $0.backlogRank }.max() ?? 0
         var created: [PlannerTask] = []
         for draft in drafts {
+            let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { continue }
             rank += 1
             let name = draft.project.trimmingCharacters(in: .whitespacesAndNewlines)
             let task = PlannerTask(
-                title: draft.title.capitalizedFirst,
+                title: title.capitalizedFirst,
                 day: draft.dayOffset.map { DayMath.day(offset: $0) },
                 start: draft.start,
                 duration: draft.duration,
@@ -604,6 +610,7 @@ struct PlannerScreen: View {
             context.insert(task)
             created.append(task)
         }
+        guard !created.isEmpty else { return }
         if created.contains(where: { $0.isInBacklog }) { drawerOpen = true }
         let n = created.count
         showToast("Добавил \(n) " + DayMath.plural(n, "задачу", "задачи", "задач"))
@@ -618,12 +625,11 @@ struct PlannerScreen: View {
     }
 
     private func findOrCreateProject(named name: String) -> Project {
-        let descriptor = FetchDescriptor<Project>(predicate: #Predicate<Project> { $0.name == name })
-        if let existing = try? context.fetch(descriptor).first {
+        let all = (try? context.fetch(FetchDescriptor<Project>())) ?? []
+        if let existing = all.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
             return existing
         }
-        let count = (try? context.fetchCount(FetchDescriptor<Project>())) ?? 0
-        let project = Project(name: name, colorIndex: count % ProjectPalette.colors.count)
+        let project = Project(name: name.capitalizedFirst, colorIndex: all.count % ProjectPalette.colors.count)
         context.insert(project)
         return project
     }

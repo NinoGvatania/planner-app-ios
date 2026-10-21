@@ -4,7 +4,8 @@ import Speech
 
 /// Диктовка по-русски на системном распознавании речи (SFSpeechRecognizer + AVAudioEngine).
 /// Отдаёт живой текст текущего захода; долгие паузы между словами превращаются в переносы строк,
-/// чтобы `DictationSplitter` делил задачи ещё и по ним.
+/// чтобы `DictationSplitter` делил задачи ещё и по ним. Законченный заход (пауза, лимит системы,
+/// ошибка) отдаётся целиком через `onSegmentFinished`.
 @MainActor
 @Observable
 final class SpeechRecorder {
@@ -18,7 +19,7 @@ final class SpeechRecorder {
     private(set) var liveText = ""
     /// Уровень сигнала 0…1 для волны.
     private(set) var level: Double = 0
-    /// Система сама закрыла заход (лимит ~1 минута): текст отдаётся наружу, заход начинается заново.
+    /// Заход закончен (пауза, лимит ~1 минута, ошибка): текст отдаётся наружу целиком.
     var onSegmentFinished: ((String) -> Void)?
 
     var isListening: Bool { status == .listening }
@@ -28,11 +29,18 @@ final class SpeechRecorder {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var generation = 0
+    private var isStarting = false
+    /// Ждём итоговый результат после паузы (task.finish()), чтобы не потерять последние слова.
+    private var awaitingFinal = false
+    private var finalTimeout: Task<Void, Never>?
 
     /// Длина паузы, после которой начинается новая задача.
     private let pauseThreshold: TimeInterval = 1.1
 
     func start() async {
+        guard !isStarting, status != .listening else { return }
+        isStarting = true
+        defer { isStarting = false }
         guard await authorize() else {
             status = .denied
             return
@@ -41,6 +49,7 @@ final class SpeechRecorder {
             status = .unavailable
             return
         }
+        finishPendingSegment()
         do {
             try beginSession(with: recognizer)
             status = .listening
@@ -49,17 +58,31 @@ final class SpeechRecorder {
         }
     }
 
-    /// Остановить запись; `liveText` остаётся до `clearLive()`.
+    /// Пауза: звук останавливается, распознаватель дорабатывает последние слова и отдаёт заход целиком.
     func pause() {
-        endSession()
-        if status == .listening { status = .paused }
+        guard status == .listening else { return }
+        status = .paused
+        engine.inputNode.removeTap(onBus: 0)
+        if engine.isRunning { engine.stop() }
+        level = 0
+        request?.endAudio()
+        if task != nil {
+            awaitingFinal = true
+            task?.finish()
+            finalTimeout?.cancel()
+            finalTimeout = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                if !Task.isCancelled { finishPendingSegment() }
+            }
+        } else {
+            finishPendingSegment()
+        }
     }
 
-    func clearLive() {
-        liveText = ""
-    }
-
+    /// Закрыть всё; `liveText` остаётся доступным до следующего старта.
     func shutdown() {
+        finalTimeout?.cancel()
+        awaitingFinal = false
         endSession()
         status = .idle
     }
@@ -96,7 +119,10 @@ final class SpeechRecorder {
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             request.append(buffer)
             let power = Self.power(of: buffer)
-            Task { @MainActor in self?.level = power }
+            Task { @MainActor in
+                guard let self, abs(self.level - power) > 0.02 else { return }
+                self.level = power
+            }
         }
         engine.prepare()
         try engine.start()
@@ -112,24 +138,44 @@ final class SpeechRecorder {
     private func handle(result: SFSpeechRecognitionResult?, error: Error?) {
         if let result {
             liveText = Self.text(from: result.bestTranscription, pause: pauseThreshold)
-            if result.isFinal, status == .listening {
-                // Лимит системы: закрываем заход, отдаём текст и начинаем новый.
-                let finished = liveText
-                endSession()
-                liveText = ""
-                if !finished.isEmpty { onSegmentFinished?(finished) }
-                if let recognizer, recognizer.isAvailable {
-                    try? beginSession(with: recognizer)
+            if result.isFinal {
+                if status == .listening {
+                    // Лимит системы: закрываем заход, отдаём текст и начинаем новый.
+                    finishPendingSegment()
+                    if let recognizer, recognizer.isAvailable {
+                        do {
+                            try beginSession(with: recognizer)
+                        } catch {
+                            status = .failed(error.localizedDescription)
+                        }
+                    } else {
+                        status = .unavailable
+                    }
                 } else {
-                    status = .unavailable
+                    finishPendingSegment()
                 }
             }
             return
         }
-        if error != nil, status == .listening {
-            endSession()
-            status = liveText.isEmpty ? .failed("Не удалось распознать речь") : .paused
+        if error != nil {
+            let wasListening = status == .listening
+            let hadText = !liveText.isEmpty
+            finishPendingSegment()
+            if wasListening {
+                status = hadText ? .paused : .failed("Не удалось распознать речь")
+            }
         }
+    }
+
+    /// Отдать текст текущего захода наружу и закрыть сессию.
+    private func finishPendingSegment() {
+        finalTimeout?.cancel()
+        finalTimeout = nil
+        awaitingFinal = false
+        let finished = liveText
+        endSession()
+        liveText = ""
+        if !finished.isEmpty { onSegmentFinished?(finished) }
     }
 
     private func endSession() {

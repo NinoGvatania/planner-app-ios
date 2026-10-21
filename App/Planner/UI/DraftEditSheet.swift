@@ -13,9 +13,23 @@ struct DraftEditSheet: View {
     }
 
     private var dayChoices: [DayChoice] {
-        [DayChoice(offset: nil, title: "Бэклог")] + (0..<7).map {
+        var list = [DayChoice(offset: nil, title: "Бэклог")] + (0...7).map {
             DayChoice(offset: $0, title: DayMath.label(offset: $0).capitalizedFirst)
         }
+        if let offset = draft.dayOffset, offset > 7 {
+            list.append(DayChoice(offset: offset, title: DayMath.label(offset: offset).capitalizedFirst))
+        }
+        return list
+    }
+
+    private var dayBinding: Binding<Int?> {
+        Binding(
+            get: { draft.dayOffset },
+            set: { offset in
+                draft.dayOffset = offset
+                if offset == nil { draft.start = nil }
+            }
+        )
     }
 
     var body: some View {
@@ -26,7 +40,7 @@ struct DraftEditSheet: View {
                         .font(.system(size: 17))
                 }
                 Section("Когда") {
-                    Picker("День", selection: $draft.dayOffset) {
+                    Picker("День", selection: dayBinding) {
                         ForEach(dayChoices) { choice in
                             Text(choice.title).tag(choice.offset)
                         }

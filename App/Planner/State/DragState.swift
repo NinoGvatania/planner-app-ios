@@ -32,10 +32,15 @@ struct ZoneFramesKey: PreferenceKey {
 
 extension View {
     /// Сообщает рамку этого вида в координатном пространстве «planner» (или другом названном).
-    func reportZone(_ id: String, space: String = "planner") -> some View {
+    /// `enabled: false` оставляет GeometryReader на месте, но ничего не сообщает — для зон внутри
+    /// ScrollView, чьи рамки иначе меняются на каждом кадре прокрутки и перерисовывают экран.
+    func reportZone(_ id: String, space: String = "planner", enabled: Bool = true) -> some View {
         background(
             GeometryReader { geometry in
-                Color.clear.preference(key: ZoneFramesKey.self, value: [id: geometry.frame(in: .named(space))])
+                Color.clear.preference(
+                    key: ZoneFramesKey.self,
+                    value: enabled ? [id: geometry.frame(in: .named(space))] : [:]
+                )
             }
         )
     }

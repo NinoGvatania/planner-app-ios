@@ -22,12 +22,17 @@ struct DraftTask: Identifiable, Equatable {
         project = parsed.project ?? ""
     }
 
-    /// Разобрать надиктованный текст на черновики задач.
-    static func drafts(from text: String) -> [DraftTask] {
+    /// Разобрать надиктованный текст на черновики задач. Куски без названия («завтра в 10») пропускаются.
+    /// `ids` — идентификаторы предыдущего разбора: карточки сохраняют идентичность, пока текст уточняется.
+    static func drafts(from text: String, reusing ids: [UUID] = []) -> [DraftTask] {
         let parser = QuickAddParser()
+        var index = 0
         return DictationSplitter.split(text).compactMap { piece in
-            guard case .task(let parsed) = parser.parse(piece), !parsed.title.isEmpty else { return nil }
-            return DraftTask(parsed: parsed)
+            let parsed = parser.parseTask(piece)
+            guard !parsed.title.isEmpty, parsed.title != "Новая задача" else { return nil }
+            let id = index < ids.count ? ids[index] : UUID()
+            index += 1
+            return DraftTask(parsed: parsed, id: id)
         }
     }
 

@@ -4,14 +4,17 @@ import SwiftData
 
 /// Рутины: шаблон `Routine` порождает задачу с `isRoutine = true` на каждый подходящий день
 /// ближайшей недели. Включение рутины у задачи создаёт шаблон, выключение — удаляет шаблон
-/// и будущие невыполненные копии.
+/// и будущие невыполненные копии. Шаблон помнит, по какой день копии уже созданы, поэтому
+/// удалённая или перенесённая копия не возвращается.
 enum RoutineManager {
     /// На сколько дней вперёд создаются копии рутин.
     static let horizon = 7
 
-    /// Досоздать копии рутин на сегодня и неделю вперёд (вызывается при запуске и возврате в приложение).
-    static func materialize(in context: ModelContext) {
-        guard let routines = try? context.fetch(FetchDescriptor<Routine>()), !routines.isEmpty else { return }
+    /// Досоздать копии рутин на сегодня и неделю вперёд (при запуске и возврате в приложение).
+    /// Возвращает созданные задачи.
+    @discardableResult
+    static func materialize(in context: ModelContext) -> [PlannerTask] {
+        guard let routines = try? context.fetch(FetchDescriptor<Routine>()), !routines.isEmpty else { return [] }
         let today = DayMath.today()
         let horizonEnd = DayMath.day(offset: horizon)
         let existing = (try? context.fetch(FetchDescriptor<PlannerTask>(predicate: #Predicate<PlannerTask> { $0.isRoutine }))) ?? []
@@ -19,41 +22,59 @@ enum RoutineManager {
             guard let day = task.day, day >= today, day <= horizonEnd else { return nil }
             return key(title: task.title, day: day)
         })
+        let projects = (try? context.fetch(FetchDescriptor<Project>())) ?? []
+        var created: [PlannerTask] = []
         for routine in routines {
-            for offset in 0...horizon {
-                let day = DayMath.day(offset: offset)
+            let firstDay = routine.materializedThrough.map { DayMath.day(offset: DayMath.offset(of: $0) + 1) } ?? today
+            var day = max(today, firstDay)
+            while day <= horizonEnd {
+                defer { day = DayMath.calendar.date(byAdding: .day, value: 1, to: day) ?? horizonEnd.addingTimeInterval(1) }
                 let weekday = DayMath.calendar.component(.weekday, from: day)
                 guard routine.weekdays.isEmpty || routine.weekdays.contains(weekday) else { continue }
                 let id = key(title: routine.title, day: day)
                 guard !present.contains(id) else { continue }
                 present.insert(id)
-                context.insert(PlannerTask(
+                let task = PlannerTask(
                     title: routine.title,
                     day: day,
                     start: routine.start,
                     duration: routine.duration,
                     quadrant: Quadrant(rawValue: routine.quadrantRaw),
-                    isRoutine: true
-                ))
+                    isRoutine: true,
+                    project: routine.projectName.flatMap { name in projects.first { $0.name == name } }
+                )
+                context.insert(task)
+                created.append(task)
             }
+            routine.materializedThrough = horizonEnd
         }
+        return created
     }
 
     /// Задачу сделали рутиной: шаблон по её названию, времени и длительности, копии на неделю.
+    /// Задача из бэклога переезжает на сегодня — она и есть сегодняшняя копия.
     static func enable(_ task: PlannerTask, in context: ModelContext) {
         let title = task.title
         let routines = (try? context.fetch(FetchDescriptor<Routine>(predicate: #Predicate<Routine> { $0.title == title }))) ?? []
+        let start = task.start ?? 9 * 60
         if let routine = routines.first {
-            routine.start = task.start ?? routine.start
+            routine.start = start
             routine.duration = task.duration
             routine.quadrantRaw = task.quadrantRaw
+            routine.projectName = task.project?.name
+            routine.materializedThrough = nil
         } else {
             context.insert(Routine(
                 title: title,
-                start: task.start ?? 9 * 60,
+                start: start,
                 duration: task.duration,
-                quadrant: Quadrant(rawValue: task.quadrantRaw) ?? .other
+                quadrant: Quadrant(rawValue: task.quadrantRaw) ?? .other,
+                projectName: task.project?.name
             ))
+        }
+        if task.day == nil {
+            task.day = DayMath.today()
+            task.start = start
         }
         materialize(in: context)
     }

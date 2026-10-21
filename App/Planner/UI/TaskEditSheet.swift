@@ -28,7 +28,10 @@ struct TaskEditSheet: View {
         if let offset = dayOffset, offset < 0 {
             list.append(DayChoice(offset: offset, title: DayMath.label(offset: offset).capitalizedFirst))
         }
-        for offset in 0..<7 {
+        for offset in 0...7 {
+            list.append(DayChoice(offset: offset, title: DayMath.label(offset: offset).capitalizedFirst))
+        }
+        if let offset = dayOffset, offset > 7 {
             list.append(DayChoice(offset: offset, title: DayMath.label(offset: offset).capitalizedFirst))
         }
         return list
@@ -57,7 +60,7 @@ struct TaskEditSheet: View {
                             }
                         }
                     }
-                    Picker("Длительность", selection: $task.duration) {
+                    Picker("Длительность", selection: durationBinding) {
                         ForEach(Array(stride(from: 15, through: 8 * 60, by: 15)), id: \.self) { minutes in
                             Text(ClockGrid.formatDuration(minutes)).tag(minutes)
                         }
@@ -99,6 +102,7 @@ struct TaskEditSheet: View {
                                         }
                                     }
                                     .buttonStyle(.bordered)
+                                    .controlSize(.large)
                                     .tint(task.project?.name == project.name ? project.color : Tokens.caption)
                                 }
                             }
@@ -139,6 +143,7 @@ struct TaskEditSheet: View {
         .presentationDetents([.large])
         .presentationBackground(Tokens.panel)
         .onAppear { projectName = task.project?.name ?? "" }
+        .onDisappear { applyProject() }
         .onChange(of: task.title) { _, _ in onChanged() }
         .onChange(of: task.duration) { _, _ in onChanged() }
         .onChange(of: task.quadrantRaw) { _, _ in onChanged() }
@@ -182,7 +187,22 @@ struct TaskEditSheet: View {
     private var startBinding: Binding<Int> {
         Binding(
             get: { task.start ?? 0 },
-            set: { task.start = $0; onChanged() }
+            set: { start in
+                task.start = start
+                task.duration = max(15, min(task.duration, ClockGrid.dayEnd - start))
+                onChanged()
+            }
+        )
+    }
+
+    /// Длительность не выходит за 24:00.
+    private var durationBinding: Binding<Int> {
+        Binding(
+            get: { task.duration },
+            set: { duration in
+                task.duration = max(15, min(duration, ClockGrid.dayEnd - (task.start ?? 0)))
+                onChanged()
+            }
         )
     }
 

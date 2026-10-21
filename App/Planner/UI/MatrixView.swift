@@ -210,10 +210,11 @@ struct MatrixView: View {
         return HStack(spacing: 0) {
             Button { onToggle(task) } label: {
                 Circle()
-                    .strokeBorder(style.dot, lineWidth: 2)
+                    .strokeBorder(task.style.dot, lineWidth: 2)
                     .frame(width: 16, height: 16)
                     .frame(width: 34)
                     .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Отметить выполненной: " + task.title)

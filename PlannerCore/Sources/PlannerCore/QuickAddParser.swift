@@ -18,7 +18,7 @@ public struct QuickAddParser {
            low.range(of: "перенес|разлож|раскида|перекин|постав", options: .regularExpression) != nil {
             return .fitOverdue(dayOffset: low.contains("завтра") ? 1 : 0)
         }
-        if low.range(of: "^(что|какие|покажи|расскажи)", options: .regularExpression) != nil {
+        if low.range(of: "^(что|какие|покажи|расскажи)(?=\\s|$)", options: .regularExpression) != nil {
             let day = low.contains("послезавтра") ? 2 : (low.contains("завтра") ? 1 : 0)
             return .agenda(dayOffset: day)
         }
@@ -167,6 +167,9 @@ public struct QuickAddParser {
             title = title.replacingOccurrences(of: "\\s+(?:и|но|а)\\s+(?=(?:и|но|а)\\s)", with: " ", options: [.regularExpression, .caseInsensitive])
         }
         result.title = title.isEmpty ? "Новая задача" : capitalized(title)
+        if let start = result.start, start + result.duration > ClockGrid.dayEnd {
+            result.duration = max(15, ClockGrid.dayEnd - start)
+        }
         return result
     }
 

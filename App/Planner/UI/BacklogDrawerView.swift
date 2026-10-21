@@ -164,6 +164,7 @@ struct BacklogDrawerView: View {
                     .background(Circle().fill(task.isDone ? style.dot : Color.clear))
                     .frame(width: 20, height: 20)
                     .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
