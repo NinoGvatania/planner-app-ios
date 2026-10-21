@@ -6,6 +6,7 @@ import SwiftUI
 /// Единственный экран приложения: шапка, рабочая поверхность, панель бэклога.
 struct PlannerScreen: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \PlannerTask.createdAt) private var tasks: [PlannerTask]
 
     @State private var dayOffset = 0
@@ -197,7 +198,14 @@ struct PlannerScreen: View {
         }
         .task {
             SeedData.seedIfNeeded(in: context)
+            RoutineManager.materialize(in: context)
             NotificationScheduler.requestPermission()
+            NotificationScheduler.sync(tasks)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Вернулись в приложение (возможно, уже другой день): досоздать рутины, обновить напоминания.
+            guard phase == .active else { return }
+            RoutineManager.materialize(in: context)
             NotificationScheduler.sync(tasks)
         }
         .onChange(of: mode) { _, _ in

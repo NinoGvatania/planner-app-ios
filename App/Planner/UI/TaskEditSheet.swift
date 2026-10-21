@@ -137,6 +137,14 @@ struct TaskEditSheet: View {
         .onChange(of: task.title) { _, _ in onChanged() }
         .onChange(of: task.duration) { _, _ in onChanged() }
         .onChange(of: task.quadrantRaw) { _, _ in onChanged() }
+        .onChange(of: task.isRoutine) { _, isRoutine in
+            if isRoutine {
+                RoutineManager.enable(task, in: context)
+            } else {
+                RoutineManager.disable(task, in: context)
+            }
+            onChanged()
+        }
     }
 
     // MARK: - Привязки
