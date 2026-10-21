@@ -167,7 +167,11 @@ struct TodayWidgetView: View {
     }
 
     private func upcomingRows(_ snapshot: WidgetSnapshot) -> [WidgetSnapshot.Item] {
-        let open = snapshot.items.filter { !$0.isDone && (($0.start ?? Int.max) + $0.duration > minutesNow || $0.start == nil) }
+        let open = snapshot.items.filter { item in
+            guard !item.isDone else { return false }
+            guard let start = item.start else { return true }
+            return start + item.duration > minutesNow
+        }
         return Array(open.prefix(4))
     }
 
@@ -253,7 +257,8 @@ struct TodayWidgetView: View {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.dateFormat = "EEE, d MMM"
-        return formatter.string(from: entry.date).capitalized
+        let text = formatter.string(from: entry.date)
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 
     private func timeText(_ item: WidgetSnapshot.Item) -> String {

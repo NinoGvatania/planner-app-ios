@@ -30,7 +30,7 @@ enum WidgetBridge {
             overdue: tasks.filter { $0.isOverdue(today: today) }.count,
             backlog: tasks.filter { $0.isInBacklog && !$0.isDone }.count
         )
-        guard snapshot != WidgetSnapshot.load() else { return }
+        guard !snapshot.hasSameContent(as: WidgetSnapshot.load()) else { return }
         do {
             try snapshot.save()
             WidgetCenter.shared.reloadAllTimelines()

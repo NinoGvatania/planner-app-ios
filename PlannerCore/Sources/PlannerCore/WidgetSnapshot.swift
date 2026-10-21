@@ -2,7 +2,7 @@ import Foundation
 
 /// Снимок дня для виджета: приложение пишет его в контейнер группы, виджет только читает.
 /// Виджет не видит базу SwiftData, поэтому здесь всё, что ему нужно, уже посчитано.
-public struct WidgetSnapshot: Codable, Sendable, Equatable {
+public struct WidgetSnapshot: Codable, Sendable {
     public struct Item: Codable, Sendable, Equatable, Identifiable {
         public var id: UUID
         public var title: String
@@ -45,10 +45,15 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     public static let fileName = "widget-snapshot.json"
 
     /// Файл в контейнере группы приложений; `nil`, если группа недоступна (нет права App Groups).
+    /// На Linux (тесты пакета) контейнеров нет.
     public static var fileURL: URL? {
-        FileManager.default
+        #if canImport(Darwin)
+        return FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
             .appendingPathComponent(fileName)
+        #else
+        return nil
+        #endif
     }
 
     public func save() throws {
@@ -63,6 +68,13 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode(WidgetSnapshot.self, from: data)
+    }
+
+    /// Содержимое совпадает (время создания не в счёт) — перезаписывать файл не нужно.
+    public func hasSameContent(as other: WidgetSnapshot?) -> Bool {
+        guard let other else { return false }
+        return day == other.day && items == other.items && streak == other.streak
+            && overdue == other.overdue && backlog == other.backlog
     }
 
     public var openCount: Int { items.filter { !$0.isDone }.count }
