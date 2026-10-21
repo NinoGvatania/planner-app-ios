@@ -17,14 +17,16 @@ enum TaskExtractor {
     static func extract(_ transcript: String) async -> (drafts: [DraftTask], source: Source) {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return ([], .rules(reason: nil)) }
-        guard case .available = OnDeviceExtractor.status else { return (byRules(text), .rules(reason: nil)) }
+        // Модель пробуем всегда, что бы ни говорила проверка доступности: если системе что-то
+        // не нравится, она сама откажет, и причина будет видна на экране.
+        let status = OnDeviceExtractor.status
         do {
             let raw = try await OnDeviceExtractor.extract(text)
             let drafts = dedupe(raw)
             guard !drafts.isEmpty else { return (byRules(text), .rules(reason: "Apple Intelligence не нашёл задач — разобрано правилами")) }
             return (drafts, .model)
         } catch {
-            return (byRules(text), .rules(reason: OnDeviceExtractor.message(for: error)))
+            return (byRules(text), .rules(reason: OnDeviceExtractor.message(for: error, status: status)))
         }
     }
 
@@ -61,7 +63,7 @@ enum OnDeviceExtractor {
 
         var note: String {
             switch self {
-            case .available: return "Apple Intelligence на устройстве — доступен"
+            case .available: return "Apple Intelligence на устройстве — доступен, разбор по смыслу"
             case .unavailable(let reason): return reason
             }
         }
@@ -76,10 +78,10 @@ enum OnDeviceExtractor {
             return .available
         case .unavailable(let reason):
             switch reason {
-            case .deviceNotEligible: return .unavailable("Этот iPhone не поддерживает Apple Intelligence — разбор правилами")
-            case .appleIntelligenceNotEnabled: return .unavailable("Apple Intelligence выключен в Настройках iOS — разбор правилами")
-            case .modelNotReady: return .unavailable("Модель Apple Intelligence ещё загружается — разбор правилами")
-            @unknown default: return .unavailable("Apple Intelligence недоступен — разбор правилами")
+            case .deviceNotEligible: return .unavailable("iOS сообщает: этот iPhone не поддерживает Apple Intelligence — пока разбор правилами")
+            case .appleIntelligenceNotEnabled: return .unavailable("iOS сообщает: Apple Intelligence выключен. Включи в Настройках iOS → Apple Intelligence и Siri — тогда разбор пойдёт моделью")
+            case .modelNotReady: return .unavailable("iOS сообщает: модель Apple Intelligence ещё загружается — пока разбор правилами")
+            @unknown default: return .unavailable("iOS сообщает: Apple Intelligence недоступен — пока разбор правилами")
             }
         }
     }
@@ -119,7 +121,8 @@ enum OnDeviceExtractor {
         return """
         You are a multilingual assistant built into a personal task planner. You work in every language,
         including Russian: the user dictates in Russian, you understand Russian perfectly and you always
-        write task titles in Russian, exactly as a native speaker would. Never refuse or switch languages.
+        write task titles in Russian, exactly as a native speaker would. Never refuse, never apologise,
+        never switch to English in the output, never translate names. Russian input is expected and fine.
 
         Today is \(formatter.string(from: today)) (\(iso.string(from: today))). The week starts on Monday.
 
@@ -148,16 +151,18 @@ enum OnDeviceExtractor {
         return response.content.tasks.compactMap(draft(from:))
     }
 
-    static func message(for error: Error) -> String {
+    /// Честно: что именно ответила система, чтобы было понятно, почему разбирали правилами.
+    static func message(for error: Error, status: Status) -> String {
         if let generation = error as? LanguageModelSession.GenerationError {
             switch generation {
-            case .unsupportedLanguageOrLocale: return "Apple Intelligence не понимает этот язык — разобрано правилами"
+            case .unsupportedLanguageOrLocale: return "iOS отказал: «язык не поддерживается» — разобрано правилами"
             case .exceededContextWindowSize: return "Диктовка слишком длинная для Apple Intelligence — разобрано правилами"
-            case .guardrailViolation: return "Apple Intelligence отказался разбирать этот текст — разобрано правилами"
-            default: return "Apple Intelligence не справился — разобрано правилами"
+            case .guardrailViolation: return "Apple Intelligence отказался от этого текста (фильтр) — разобрано правилами"
+            default: return "Apple Intelligence: \(generation.localizedDescription) — разобрано правилами"
             }
         }
-        return "Apple Intelligence не справился — разобрано правилами"
+        if case .unavailable(let reason) = status { return reason }
+        return "Apple Intelligence: \(error.localizedDescription) — разобрано правилами"
     }
 
     private static func draft(from task: ExtractedTask) -> DraftTask? {

@@ -1,9 +1,9 @@
 import PlannerCore
 import SwiftUI
 
-/// Панель бэклога снизу. Три положения: свёрнута (заголовок, две верхние задачи «торчат», строка ввода),
-/// открыта (до 6 строк) и на весь экран. Свёрнутую открывает тап по любому месту панели, открытую
-/// сворачивает тап по заголовку; свайп тянет за пальцем и отпускает к ближайшему положению.
+/// Панель бэклога снизу. Три положения: свёрнута (только заголовок с счётчиком и «Просрочено» плюс
+/// строка ввода — ничего не торчит), открыта (до 6 строк) и на весь экран. Тап по заголовку
+/// открывает и сворачивает; свайп тянет за пальцем и отпускает к ближайшему положению.
 /// Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
 /// Жест удержания висит на контейнере списка, а не на строках: строка List может быть уничтожена,
 /// когда панель сворачивается в начале переноса, и жест вместе с ней.
@@ -22,6 +22,9 @@ struct BacklogDrawerView: View {
     /// Сколько высоты экрана панель может занять (с клавиатурой — меньше).
     var maxHeight: CGFloat = .infinity
     var onDragCancelled: (() -> Void)? = nil
+    /// «Просрочено · N» в заголовке панели; тап открывает лист просроченных.
+    var overdueCount: Int = 0
+    var onOverdue: (() -> Void)? = nil
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
@@ -31,12 +34,9 @@ struct BacklogDrawerView: View {
     @State private var rowFrames: [UUID: CGRect] = [:]
     @State private var draggingTask: PlannerTask?
 
-    private let rowHeight: CGFloat = 50
+    private let rowHeight: CGFloat = 66
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
-    /// Сколько строк «торчит» в свёрнутом виде.
-    private var peekRows: Int { min(tasks.count, 2) }
-    private var peekHeight: CGFloat { peekRows == 0 ? 0 : CGFloat(peekRows) * rowHeight + 4 }
-    private var collapsedHeight: CGFloat { Tokens.drawerCollapsed + peekHeight }
+    private var collapsedHeight: CGFloat { Tokens.drawerCollapsed }
     private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * rowHeight + 8 }
     private var fullHeight: CGFloat { maxHeight.isFinite ? max(collapsedHeight + 100, maxHeight) : Tokens.drawerCollapsed + listHeight }
     private var openHeight: CGFloat { min(Tokens.drawerCollapsed + listHeight, fullHeight) }
@@ -64,14 +64,6 @@ struct BacklogDrawerView: View {
                 .frame(height: max(0, height - Tokens.drawerCollapsed), alignment: .top)
                 .clipped()
                 .contentShape(Rectangle())
-                .overlay {
-                    // Свёрнутая панель: тап по торчащим задачам открывает её, а не редактор задачи.
-                    if !isOpen {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { open() }
-                    }
-                }
                 .onPreferenceChange(BacklogRowFramesKey.self) { rowFrames = $0 }
                 .gesture(
                     HoldDragGesture(
@@ -149,6 +141,31 @@ struct BacklogDrawerView: View {
                     Text(hint)
                         .font(.system(size: 13))
                         .foregroundStyle(Tokens.accent)
+                } else if overdueCount > 0, let onOverdue {
+                    Button(action: onOverdue) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Просрочено")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("\(overdueCount)")
+                                .font(.system(size: 12, weight: .bold))
+                                .monospacedDigit()
+                                .foregroundStyle(Color(hex: 0x1A0706))
+                                .frame(minWidth: 20, minHeight: 20)
+                                .padding(.horizontal, 2)
+                                .background(Tokens.overdueBadge, in: Capsule())
+                        }
+                        .foregroundStyle(Tokens.overdue)
+                        .padding(.leading, 10)
+                        .padding(.trailing, 5)
+                        .frame(height: 32)
+                        .background(Tokens.overdueChip, in: Capsule())
+                        .frame(minHeight: Tokens.hitTarget)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Просрочено: \(overdueCount)")
                 }
             }
         }
@@ -208,7 +225,7 @@ struct BacklogDrawerView: View {
             ForEach(tasks, id: \.id) { task in
                 row(task)
                     .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 16))
                     .listRowSeparator(.hidden)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
@@ -233,37 +250,12 @@ struct BacklogDrawerView: View {
     }
 
     private func row(_ task: PlannerTask) -> some View {
-        let style = task.style
-        return HStack(spacing: 4) {
-            Button { onToggle(task) } label: {
-                Circle()
-                    .strokeBorder(style.dot, lineWidth: 2)
-                    .background(Circle().fill(task.isDone ? style.dot : Color.clear))
-                    .frame(width: 20, height: 20)
-                    .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(task.title)
-                    .font(.system(size: 15))
-                    .lineLimit(1)
-                    .strikethrough(task.isDone)
-                Text(task.isDone ? "сделано" : ClockGrid.formatDuration(task.duration) + (task.project.map { " · \($0.name)" } ?? ""))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Tokens.muted)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 14))
-                .foregroundStyle(Color(hex: 0x5A5B63))
-                .padding(.trailing, 4)
-        }
-        .frame(height: rowHeight)
-        .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
-        .foregroundStyle(Tokens.text)
+        TaskRowView(
+            task: task,
+            meta: task.isDone ? "сделано" : ClockGrid.formatDuration(task.duration),
+            dimmed: drag?.taskID == task.id,
+            onToggle: { onToggle(task) }
+        )
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
         .background(

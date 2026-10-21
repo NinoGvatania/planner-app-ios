@@ -26,6 +26,8 @@ final class DictationSplitterTests: XCTestCase {
     func testConnectors() {
         XCTAssertEqual(DictationSplitter.split("сделать отчёт, а ещё позвонить в банк"), ["сделать отчёт", "позвонить в банк"])
         XCTAssertEqual(DictationSplitter.split("помыть посуду потом вынести мусор"), ["помыть посуду", "вынести мусор"])
+        XCTAssertEqual(DictationSplitter.split("почистить зубы потом свозить Дашу в зоопарк"), ["почистить зубы", "свозить Дашу в зоопарк"])
+        XCTAssertEqual(DictationSplitter.split("дать ответ индусам и отправить список в банк"), ["дать ответ индусам", "отправить список в банк"])
         XCTAssertEqual(DictationSplitter.split("ещё раз проверить почту"), ["ещё раз проверить почту"])
         XCTAssertEqual(DictationSplitter.split("Ещё купить батарейки"), ["купить батарейки"])
         XCTAssertEqual(DictationSplitter.split("Купить ещё молока"), ["Купить ещё молока"])

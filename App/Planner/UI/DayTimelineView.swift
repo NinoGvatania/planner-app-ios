@@ -53,6 +53,8 @@ struct DayTimelineView: View {
     @State private var liveStart: Int?
     /// Силуэт создаваемой задачи, пока тянут по свободному месту.
     @State private var creating: (day: Int, start: Int, duration: Int)?
+    /// Удержание началось на блоке или его ручке: это перенос или растягивание, а не создание.
+    @State private var creationSuppressed = false
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var scrolledToNow = false
     /// Видимая область сетки в координатах «planner».
@@ -489,6 +491,10 @@ struct DayTimelineView: View {
             }
             .gesture(
                 HoldDragGesture(space: "grid", onChanged: { location, start in
+                    if creating == nil, !creationSuppressed, isOverBlock(day: day, y: start.y) {
+                        creationSuppressed = true
+                    }
+                    guard !creationSuppressed else { return }
                     scroll.interacting = true
                     let startMinutes = snappedMinutes(forY: start.y)
                     let end = snappedMinutes(forY: location.y)
@@ -501,14 +507,16 @@ struct DayTimelineView: View {
                 }, onEnded: {
                     scroll.interacting = false
                     stopAutoScroll()
-                    if let creating = creating {
+                    if let creating = creating, !creationSuppressed {
                         onCreate(creating.day, creating.start, creating.duration)
                     }
                     creating = nil
+                    creationSuppressed = false
                 }, onCancelled: {
                     scroll.interacting = false
                     stopAutoScroll()
                     creating = nil
+                    creationSuppressed = false
                 })
             )
     }
@@ -668,6 +676,20 @@ struct DayTimelineView: View {
             .frame(width: width, height: height)
             .position(x: columnLeft + 3 + width / 2, y: top + height / 2)
             .allowsHitTesting(false)
+    }
+
+    /// В этой точке колонки уже лежит блок с временем (с запасом 12 pt на ручки): удержание здесь —
+    /// перенос или растягивание, создавать вторую задачу поверх нельзя.
+    private func isOverBlock(day: Int, y: CGFloat) -> Bool {
+        let date = date(day)
+        let marginMinutes = 12 / Tokens.hourHeight * 60
+        let minutes = (y - topInset) / Tokens.hourHeight * 60
+        return tasks.contains { task in
+            guard task.day == date, let start = task.start else { return false }
+            let from = CGFloat(start) - marginMinutes
+            let to = CGFloat(start + max(task.duration, 20)) + marginMinutes
+            return minutes >= from && minutes <= to
+        }
     }
 
     /// Минуты от 0:00 по вертикальной координате в сетке, с шагом 15 минут.

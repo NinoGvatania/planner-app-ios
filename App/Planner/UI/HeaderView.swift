@@ -52,19 +52,18 @@ enum Display: String, CaseIterable, Identifiable {
     }
 }
 
-/// Шапка: заголовок-меню периода (день / неделя / месяц / год), «Просрочено», серия, кнопка режима
+/// Шапка: заголовок-меню периода (день / неделя / месяц / год), серия, кнопка режима
 /// (календарь / список / матрица / проекты / диаграмма), меню «…», «к сегодня».
+/// «Просрочено» живёт в заголовке панели бэклога.
 struct HeaderView: View {
     let title: String
     let subtitle: String
-    let overdueCount: Int
     let streak: Int
     let todayNumber: Int
     @Binding var period: Period
     @Binding var display: Display
     @Binding var showDone: Bool
     @Binding var colorMode: ColorMode
-    let onOverdue: () -> Void
     let onStreak: () -> Void
     let onToday: () -> Void
     let onProjects: () -> Void
@@ -103,23 +102,6 @@ struct HeaderView: View {
             }
             .layoutPriority(1)
             .accessibilityLabel("Период: \(period.title). Выбрать другой")
-
-            if overdueCount > 0 {
-                Button(action: onOverdue) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("\(overdueCount)")
-                            .font(.system(size: 13, weight: .bold))
-                            .monospacedDigit()
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(height: Tokens.hitTarget)
-                    .glassEffect(.regular.tint(Tokens.overdueChip.opacity(0.85)).interactive(), in: Capsule())
-                    .foregroundStyle(Tokens.overdue)
-                }
-                .accessibilityLabel("Просрочено: \(overdueCount)")
-            }
 
             Button(action: onStreak) {
                 HStack(spacing: 3) {

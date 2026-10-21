@@ -184,7 +184,6 @@ struct PlannerScreen: View {
             HeaderView(
                 title: headerTitle,
                 subtitle: headerSubtitle,
-                overdueCount: overdueTasks.count,
                 streak: streakInfo.current,
                 todayNumber: DayMath.dayOfMonth(today),
                 period: Binding(
@@ -200,7 +199,6 @@ struct PlannerScreen: View {
                     get: { ColorMode(rawValue: colorModeRaw) ?? .quadrant },
                     set: { colorModeRaw = $0.rawValue }
                 ),
-                onOverdue: { showOverdue = true },
                 onStreak: { showStreak = true },
                 onToday: {
                     withAnimation { dayOffset = 0 }
@@ -240,7 +238,9 @@ struct PlannerScreen: View {
                 onEdit: { editingTask = $0 },
                 onDelete: deleteTask,
                 maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - (isDayGrid ? 64 : 0) - 24) : .infinity,
-                onDragCancelled: dragCancelled
+                onDragCancelled: dragCancelled,
+                overdueCount: overdueTasks.count,
+                onOverdue: { showOverdue = true }
             )
         }
         .coordinateSpace(name: "planner")

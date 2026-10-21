@@ -148,46 +148,8 @@ struct OverdueSheet: View {
     }
 
     private func row(_ task: PlannerTask) -> some View {
-        let style = task.style
         let dayLabel = task.day.map { DayMath.label(offset: DayMath.offset(of: $0)) } ?? ""
         let when = task.start.map { "\(dayLabel) · " + ClockGrid.format(minutes: $0) + "–" + ClockGrid.format(minutes: $0 + task.duration) } ?? "\(dayLabel) · весь день"
-        return HStack(alignment: .top, spacing: 6) {
-            Button { onToggle(task) } label: {
-                ZStack {
-                    Circle()
-                        .strokeBorder(style.dot, lineWidth: 2)
-                        .background(Circle().fill(task.isDone ? style.dot : Color.clear))
-                        .frame(width: 24, height: 24)
-                    if task.isDone {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(Tokens.background)
-                    }
-                }
-                .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, -10)
-            .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(task.title)
-                    .font(.system(size: 16))
-                    .strikethrough(task.isDone)
-                    .foregroundStyle(task.isDone ? Tokens.muted : Tokens.text)
-                HStack {
-                    Label(when, systemImage: "calendar")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Tokens.overdue)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(task.project?.name ?? "")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Tokens.muted)
-                }
-            }
-            .padding(.top, 10)
-        }
-        .padding(.vertical, 8)
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
+        return TaskRowView(task: task, meta: when, metaIcon: "calendar", metaColor: Tokens.overdue, onToggle: { onToggle(task) })
     }
 }

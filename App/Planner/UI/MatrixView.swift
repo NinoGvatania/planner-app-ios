@@ -29,7 +29,8 @@ struct MatrixView: View {
     private let cellSpacing: CGFloat = 8
     private let rowHeight: CGFloat = Tokens.hitTarget
     private let cellHeaderHeight: CGFloat = 34
-    private let trayHeight: CGFloat = 96
+    /// Полка «Не разобрано» в сетке: шапка и две строки задач (или «+N ещё»).
+    private var trayHeight: CGFloat { cellHeaderHeight + 2 * (rowHeight + 3) + 10 }
     private var isList: Bool { layoutRaw == "list" }
 
     // MARK: - Данные
@@ -112,9 +113,9 @@ struct MatrixView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 10) {
                         ForEach(Quadrant.allCases, id: \.rawValue) { quadrant in
-                            section(quadrant)
+                            section(raw: quadrant.rawValue)
                         }
-                        unsortedTray
+                        section(raw: 0)
                     }
                     .padding(.horizontal, 10)
                     .padding(.bottom, 16)
@@ -279,22 +280,24 @@ struct MatrixView: View {
 
     // MARK: - Список по приоритету (секции сворачиваются)
 
-    private func section(_ quadrant: Quadrant) -> some View {
-        let style = quadrant.style
-        let list = items(for: quadrant)
-        let isCollapsed = collapsed.contains(quadrant.rawValue)
+    /// Секция списка: квадрант (1…4) или «Не разобрано» (0) — один и тот же вид строк.
+    private func section(raw: Int) -> some View {
+        let style = cellStyle(raw)
+        let list = items(for: raw)
+        let isCollapsed = collapsed.contains(raw)
+        let label = Quadrant(rawValue: raw)?.label.lowercased() ?? "перетащи в квадрант"
         return VStack(spacing: 2) {
             Button {
                 withAnimation(.spring(duration: 0.28)) {
-                    if isCollapsed { collapsed.remove(quadrant.rawValue) } else { collapsed.insert(quadrant.rawValue) }
+                    if isCollapsed { collapsed.remove(raw) } else { collapsed.insert(raw) }
                 }
             } label: {
                 HStack(spacing: 8) {
                     Circle().fill(style.dot).frame(width: 10, height: 10)
-                    Text(quadrant.name)
+                    Text(cellName(raw))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(style.text)
-                    Text("· " + quadrant.label.lowercased())
+                    Text("· " + label)
                         .font(.system(size: 13))
                         .foregroundStyle(style.text.opacity(0.7))
                         .lineLimit(1)
@@ -313,13 +316,13 @@ struct MatrixView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel((isCollapsed ? "Развернуть: " : "Свернуть: ") + quadrant.name)
+            .accessibilityLabel((isCollapsed ? "Развернуть: " : "Свернуть: ") + cellName(raw))
             if !isCollapsed {
                 ForEach(list, id: \.id) { task in
                     wideRow(task, style: style)
                 }
                 if list.isEmpty {
-                    Text("Пусто — перетащи сюда")
+                    Text(raw == 0 ? "Всё разобрано" : "Пусто — перетащи сюда")
                         .font(.system(size: 13))
                         .foregroundStyle(style.text.opacity(0.75))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -380,12 +383,14 @@ struct MatrixView: View {
 
     // MARK: - Не разобрано
 
-    /// Полка серых задач без квадранта: шапка как у клеток, под ней фишки в строку. Тап по шапке —
-    /// полный список.
+    /// Полка серых задач без квадранта в сетке: шапка как у клеток и такие же строки, как в клетках.
+    /// Две строки видно сразу, остальное — «+N ещё» или тап по шапке.
     private var unsortedTray: some View {
         let list = unsortedTasks
         let style = QuadrantStyle.unsorted
-        return VStack(alignment: .leading, spacing: 2) {
+        let visible = list.count > 2 ? Array(list.prefix(1)) : list
+        let hidden = list.count - visible.count
+        return VStack(spacing: 3) {
             Button {
                 expanded = 0
             } label: {
@@ -409,58 +414,40 @@ struct MatrixView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Не разобрано — показать все")
-            // Без горизонтальной прокрутки (она спорила бы со свайпом между периодами):
-            // три первые фишки и «+N», остальное — по тапу на шапку.
-            HStack(spacing: 6) {
-                ForEach(Array(list.prefix(3)), id: \.id) { task in
-                    trayChip(task)
-                }
-                if list.count > 3 {
-                    Button {
-                        expanded = 0
-                    } label: {
-                        Text("+\(list.count - 3)")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Tokens.caption)
-                            .padding(.horizontal, 10)
-                            .frame(height: Tokens.hitTarget)
-                            .background(Color.black.opacity(0.25), in: Capsule())
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Ещё \(list.count - 3): показать все неразобранные")
-                }
-                if list.isEmpty {
-                    Text("Всё разобрано")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Tokens.muted)
-                        .padding(.horizontal, 6)
-                        .frame(height: Tokens.hitTarget)
-                }
-                Spacer(minLength: 0)
+            ForEach(visible, id: \.id) { task in
+                compactRow(task, style: style)
             }
-            .padding(.horizontal, 6)
-            .frame(height: Tokens.hitTarget + 8)
+            if hidden > 0 {
+                Button {
+                    expanded = 0
+                } label: {
+                    Text("+\(hidden) ещё")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(style.text)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: rowHeight)
+                        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ещё \(hidden): показать все неразобранные")
+            }
+            if list.isEmpty {
+                Text("Всё разобрано")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Tokens.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+            }
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 5)
+        .padding(.bottom, 5)
         .frame(height: trayHeight)
         .frame(maxWidth: .infinity)
+        .clipped()
         .background(style.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
-    }
-
-    private func trayChip(_ task: PlannerTask) -> some View {
-        Text(task.title)
-            .font(.system(size: 13))
-            .lineLimit(1)
-            .foregroundStyle(Tokens.text)
-            .padding(.horizontal, 12)
-            .frame(height: Tokens.hitTarget)
-            .frame(maxWidth: 150)
-            .background(Color.black.opacity(0.25), in: Capsule())
-            .opacity(drag?.taskID == task.id ? 0.35 : 1)
-            .contentShape(Capsule())
-            .onTapGesture { onEdit(task) }
-            .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 
     // MARK: - Полный список квадранта
