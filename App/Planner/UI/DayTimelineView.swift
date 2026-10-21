@@ -390,37 +390,31 @@ struct DayTimelineView: View {
         .padding(.trailing, 8)
     }
 
+    /// Свободное место колонки: тап снимает выделение, удержание создаёт задачу на 30 минут
+    /// в этом месте, удержание с протягиванием вниз — задачу нужной длины (силуэт, пока тянешь).
     private func columnBackground(day: Int) -> some View {
         Color.clear
             .contentShape(Rectangle())
-            .onTapGesture(count: 1) { location in
-                if selectedID != nil {
-                    selectedID = nil
-                    liveDuration = nil
-                    liveStart = nil
-                } else {
-                    let start = snappedMinutes(forY: location.y)
-                    onCreate(day, ClockGrid.clampedStart(start, duration: 30), 30)
-                }
+            .onTapGesture {
+                selectedID = nil
+                liveDuration = nil
+                liveStart = nil
             }
             .gesture(
-                LongPressGesture(minimumDuration: 0.3)
-                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
-                    .onChanged { value in
-                        guard case .second(true, let dragValue?) = value else { return }
-                        let start = snappedMinutes(forY: dragValue.startLocation.y)
-                        let end = snappedMinutes(forY: dragValue.location.y)
-                        // Просто удержание с дрожанием пальца задачу не создаёт: нужно уйти в следующую ячейку.
-                        guard end > start || creating != nil else { return }
-                        let duration = max(15, min(end - start, ClockGrid.dayEnd - start))
-                        creating = (day: day, start: ClockGrid.clampedStart(start, duration: duration), duration: duration)
+                HoldDragGesture(space: "grid", onChanged: { location, start in
+                    let startMinutes = snappedMinutes(forY: start.y)
+                    let end = snappedMinutes(forY: location.y)
+                    let stretched = end > startMinutes ? min(end - startMinutes, ClockGrid.dayEnd - startMinutes) : 30
+                    let duration = max(15, stretched)
+                    creating = (day: day, start: ClockGrid.clampedStart(startMinutes, duration: duration), duration: duration)
+                    updateAutoScroll(fingerY: location.y - scroll.offset + viewport.minY)
+                }, onEnded: {
+                    stopAutoScroll()
+                    if let creating = creating {
+                        onCreate(creating.day, creating.start, creating.duration)
                     }
-                    .onEnded { _ in
-                        if let creating = creating {
-                            onCreate(creating.day, creating.start, creating.duration)
-                        }
-                        creating = nil
-                    }
+                    creating = nil
+                })
             )
     }
 
@@ -547,14 +541,10 @@ struct DayTimelineView: View {
     }
 
     private func dragGesture(for task: PlannerTask) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.3)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
-            .onChanged { value in
-                if case .second(true, let dragValue?) = value {
-                    onDragChanged(task, dragValue.location, dragValue.startLocation)
-                }
-            }
-            .onEnded { _ in onDragEnded() }
+        HoldDragGesture(
+            onChanged: { location, start in onDragChanged(task, location, start) },
+            onEnded: onDragEnded
+        )
     }
 
     private func preview(start: Int, duration: Int, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {

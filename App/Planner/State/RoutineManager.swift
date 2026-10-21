@@ -29,8 +29,7 @@ enum RoutineManager {
             var day = max(today, firstDay)
             while day <= horizonEnd {
                 defer { day = DayMath.calendar.date(byAdding: .day, value: 1, to: day) ?? horizonEnd.addingTimeInterval(1) }
-                let weekday = DayMath.calendar.component(.weekday, from: day)
-                guard routine.weekdays.isEmpty || routine.weekdays.contains(weekday) else { continue }
+                guard matches(routine, day: day) else { continue }
                 let id = key(title: routine.title, day: day)
                 guard !present.contains(id) else { continue }
                 present.insert(id)
@@ -92,6 +91,35 @@ enum RoutineManager {
             guard let day = copy.day, day >= today else { continue }
             context.delete(copy)
         }
+    }
+
+    /// Подходит ли день под расписание рутины: дни недели и чётность недели года.
+    static func matches(_ routine: Routine, day: Date) -> Bool {
+        let weekday = DayMath.calendar.component(.weekday, from: day)
+        guard routine.weekdays.isEmpty || routine.weekdays.contains(weekday) else { return false }
+        guard routine.weekParity != 0 else { return true }
+        let week = DayMath.calendar.component(.weekOfYear, from: day)
+        return routine.weekParity == 1 ? week % 2 == 1 : week % 2 == 0
+    }
+
+    /// Расписание изменили: будущие невыполненные копии пересоздаются по новым правилам.
+    /// `kept` — задача, которую сейчас редактируют: она остаётся как есть.
+    static func regenerate(_ routine: Routine, keeping kept: PlannerTask?, in context: ModelContext) {
+        let title = routine.title
+        let today = DayMath.today()
+        let copies = (try? context.fetch(FetchDescriptor<PlannerTask>(
+            predicate: #Predicate<PlannerTask> { $0.isRoutine && $0.title == title && !$0.isDone }
+        ))) ?? []
+        for copy in copies where copy.id != kept?.id {
+            guard let day = copy.day, day >= today else { continue }
+            context.delete(copy)
+        }
+        if let kept, let day = kept.day, day >= today, !matches(routine, day: day) {
+            // Редактируемая копия стоит на день, который больше не подходит: оставляем, но она уже не рутина.
+            kept.isRoutine = false
+        }
+        routine.materializedThrough = nil
+        materialize(in: context)
     }
 
     private static func key(title: String, day: Date) -> String {

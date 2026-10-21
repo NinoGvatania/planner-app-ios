@@ -11,11 +11,15 @@ struct TaskEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @Query(sort: \Project.name) private var projects: [Project]
+    @Query private var routines: [Routine]
 
     @State private var projectName: String = ""
     @State private var confirmDelete = false
 
     private var dayOffset: Int? { task.day.map { DayMath.offset(of: $0) } }
+    private var routine: Routine? { routines.first { $0.title == task.title } }
+    /// Дни недели по порядку с понедельника в значениях `Calendar.weekday`.
+    private let weekdayOrder = [2, 3, 4, 5, 6, 7, 1]
 
     private struct DayChoice: Identifiable {
         let offset: Int?
@@ -111,11 +115,14 @@ struct TaskEditSheet: View {
                 }
                 Section {
                     Toggle("Сделана", isOn: doneBinding)
-                    Toggle("Ежедневная рутина", isOn: $task.isRoutine)
+                    Toggle("Повторять", isOn: $task.isRoutine)
+                } footer: {
+                    if task.isRoutine {
+                        Text("Копии создаются на неделю вперёд по расписанию ниже; время и длительность — из этой задачи.")
+                    }
                 }
-                Section {
-                    Button("Удалить задачу", role: .destructive) { confirmDelete = true }
-                        .frame(maxWidth: .infinity)
+                if task.isRoutine, let routine = routine {
+                    routineSection(routine)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -123,6 +130,15 @@ struct TaskEditSheet: View {
             .navigationTitle("Задача")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(role: .destructive) {
+                        confirmDelete = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .tint(Tokens.overdue)
+                    .accessibilityLabel("Удалить задачу")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") {
                         applyProject()
@@ -146,7 +162,10 @@ struct TaskEditSheet: View {
         .onDisappear { applyProject() }
         .onChange(of: task.title) { _, _ in onChanged() }
         .onChange(of: task.duration) { _, _ in onChanged() }
-        .onChange(of: task.quadrantRaw) { _, _ in onChanged() }
+        .onChange(of: task.quadrantRaw) { _, _ in
+            syncRoutine()
+            onChanged()
+        }
         .onChange(of: task.isRoutine) { _, isRoutine in
             if isRoutine {
                 RoutineManager.enable(task, in: context)
@@ -155,6 +174,78 @@ struct TaskEditSheet: View {
             }
             onChanged()
         }
+    }
+
+    // MARK: - Повтор
+
+    @ViewBuilder
+    private func routineSection(_ routine: Routine) -> some View {
+        Section("Расписание") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(routine.weekdays.isEmpty ? "Каждый день" : "По дням недели")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Tokens.caption)
+                HStack(spacing: 6) {
+                    ForEach(weekdayOrder, id: \.self) { weekday in
+                        let selected = routine.weekdays.isEmpty || routine.weekdays.contains(weekday)
+                        Button {
+                            toggleWeekday(weekday, in: routine)
+                        } label: {
+                            Text(DayMath.weekdayShort[weekday - 1])
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: Tokens.hitTarget)
+                                .background(selected ? Tokens.accent : Tokens.field, in: RoundedRectangle(cornerRadius: 10))
+                                .foregroundStyle(selected ? Tokens.onAccent : Tokens.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(DayMath.weekdayFull[weekday - 1])
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            Picker("Недели", selection: Binding(
+                get: { routine.weekParity },
+                set: { value in
+                    routine.weekParity = value
+                    RoutineManager.regenerate(routine, keeping: task, in: context)
+                    onChanged()
+                }
+            )) {
+                Text("Каждую").tag(0)
+                Text("Нечётные").tag(1)
+                Text("Чётные").tag(2)
+            }
+            if let start = task.start {
+                LabeledContent("Время", value: ClockGrid.format(minutes: start) + " · " + ClockGrid.formatDuration(task.duration))
+            } else {
+                LabeledContent("Время", value: "весь день")
+            }
+        }
+    }
+
+    private func toggleWeekday(_ weekday: Int, in routine: Routine) {
+        var days = routine.weekdays.isEmpty ? weekdayOrder : routine.weekdays
+        if days.contains(weekday) {
+            days.removeAll { $0 == weekday }
+            if days.isEmpty { days = [weekday] }
+        } else {
+            days.append(weekday)
+        }
+        routine.weekdays = days.count == 7 ? [] : days
+        RoutineManager.regenerate(routine, keeping: task, in: context)
+        onChanged()
+    }
+
+    /// Время и длительность задачи поменялись — шаблон рутины повторяет их.
+    private func syncRoutine() {
+        guard task.isRoutine, let routine = routine else { return }
+        var changed = false
+        if let start = task.start, routine.start != start { routine.start = start; changed = true }
+        if routine.duration != task.duration { routine.duration = task.duration; changed = true }
+        if routine.quadrantRaw != task.quadrantRaw { routine.quadrantRaw = task.quadrantRaw; changed = true }
+        if changed { RoutineManager.regenerate(routine, keeping: task, in: context) }
     }
 
     // MARK: - Привязки
@@ -190,6 +281,7 @@ struct TaskEditSheet: View {
             set: { start in
                 task.start = start
                 task.duration = max(15, min(task.duration, ClockGrid.dayEnd - start))
+                syncRoutine()
                 onChanged()
             }
         )
@@ -201,6 +293,7 @@ struct TaskEditSheet: View {
             get: { task.duration },
             set: { duration in
                 task.duration = max(15, min(duration, ClockGrid.dayEnd - (task.start ?? 0)))
+                syncRoutine()
                 onChanged()
             }
         )

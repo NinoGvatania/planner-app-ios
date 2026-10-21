@@ -1,7 +1,10 @@
 import PlannerCore
 import SwiftUI
 
-/// Матрица Эйзенхауэра: четыре квадранта, каждый — зона сброса; перетаскивание меняет квадрант задачи.
+/// Матрица Эйзенхауэра. Два режима: «Матрица» — 2×2 квадранта, каждый растёт под свои задачи,
+/// страница прокручивается целиком; «Список» — четыре секции по убыванию приоритета, все задачи видны.
+/// Квадранты и секции — зоны сброса: перетаскивание меняет квадрант задачи. Под ними полка
+/// «Не разобрано» для серых задач без квадранта.
 struct MatrixView: View {
     let tasks: [PlannerTask]
     let drag: DragState?
@@ -10,7 +13,9 @@ struct MatrixView: View {
     let onDragEnded: () -> Void
     let onEdit: (PlannerTask) -> Void
 
+    @AppStorage("matrixLayout") private var layoutRaw = "grid"
     private let labelWidth: CGFloat = 18
+    private var isList: Bool { layoutRaw == "list" }
 
     private func items(for quadrant: Quadrant) -> [PlannerTask] {
         let today = DayMath.today()
@@ -30,10 +35,48 @@ struct MatrixView: View {
             }
     }
 
+    private var unsortedTasks: [PlannerTask] {
+        tasks
+            .filter { !$0.isDone && !$0.isRoutine && !$0.isSorted }
+            .sorted { a, b in
+                if (a.day == nil) != (b.day == nil) { return a.day != nil }
+                if let da = a.day, let db = b.day, da != db { return da < db }
+                return a.backlogRank > b.backlogRank
+            }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            Picker("Вид матрицы", selection: $layoutRaw) {
+                Text("Матрица").tag("grid")
+                Text("Список").tag("list")
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 10) {
+                    if isList {
+                        ForEach(Quadrant.allCases, id: \.rawValue) { quadrant in
+                            section(quadrant)
+                        }
+                    } else {
+                        gridLayout
+                    }
+                    unsortedTray
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 16)
+            }
+        }
+    }
+
+    // MARK: - Матрица 2×2
+
+    private var gridLayout: some View {
+        VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Color.clear.frame(width: labelWidth)
+                Color.clear.frame(width: labelWidth, height: 22)
                 axisLabel("Срочно")
                 axisLabel("Не срочно")
             }
@@ -50,22 +93,192 @@ struct MatrixView: View {
                     cell(.other)
                 }
             }
-            .frame(maxHeight: .infinity)
-            unsortedTray
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 8)
     }
 
-    private var unsortedTasks: [PlannerTask] {
-        tasks
-            .filter { !$0.isDone && !$0.isRoutine && !$0.isSorted }
-            .sorted { a, b in
-                if (a.day == nil) != (b.day == nil) { return a.day != nil }
-                if let da = a.day, let db = b.day, da != db { return da < db }
-                return a.backlogRank > b.backlogRank
-            }
+    private func axisLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .kerning(0.6)
+            .foregroundStyle(Tokens.caption)
+            .frame(maxWidth: .infinity)
     }
+
+    private func rowLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .kerning(0.6)
+            .foregroundStyle(Tokens.caption)
+            .fixedSize()
+            .rotationEffect(.degrees(-90))
+            .frame(width: labelWidth)
+            .frame(maxHeight: .infinity)
+    }
+
+    private func cell(_ quadrant: Quadrant) -> some View {
+        let style = quadrant.style
+        let list = items(for: quadrant)
+        let hovered = drag?.target == .quadrant(quadrant.rawValue)
+        return VStack(spacing: 3) {
+            HStack(spacing: 6) {
+                Circle().fill(style.dot).frame(width: 10, height: 10)
+                Text(quadrant.label)
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(style.text)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(list.count)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(style.dot)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            ForEach(list, id: \.id) { task in
+                compactRow(task, style: style)
+            }
+            if list.isEmpty {
+                Text("Пусто — перетащи сюда")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(style.text.opacity(0.75))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+            }
+            Spacer(minLength: 5)
+        }
+        .padding(.horizontal, 5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(hovered ? Tokens.accent.opacity(0.12) : style.background, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: 1.5))
+        .reportZone("quad-\(quadrant.rawValue)", enabled: drag != nil)
+        .accessibilityLabel(quadrant.name)
+    }
+
+    private func compactRow(_ task: PlannerTask, style: QuadrantStyle) -> some View {
+        let today = DayMath.today()
+        let overdue = task.isOverdue(today: today)
+        return HStack(spacing: 0) {
+            Button { onToggle(task) } label: {
+                Circle()
+                    .strokeBorder(task.style.dot, lineWidth: 2)
+                    .frame(width: 16, height: 16)
+                    .frame(width: 34)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Отметить выполненной: " + task.title)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(style.text)
+                    .lineLimit(2)
+                Text(meta(task))
+                    .font(.system(size: 11))
+                    .foregroundStyle(overdue ? Tokens.overdue : Tokens.caption)
+                    .lineLimit(1)
+            }
+            .padding(.vertical, 5)
+            Spacer(minLength: 0)
+        }
+        .padding(.trailing, 6)
+        .frame(minHeight: 46)
+        .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 10))
+        .opacity(drag?.taskID == task.id ? 0.35 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { onEdit(task) }
+        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
+    }
+
+    // MARK: - Список по приоритету
+
+    private func section(_ quadrant: Quadrant) -> some View {
+        let style = quadrant.style
+        let list = items(for: quadrant)
+        let hovered = drag?.target == .quadrant(quadrant.rawValue)
+        return VStack(spacing: 2) {
+            HStack(spacing: 8) {
+                Circle().fill(style.dot).frame(width: 10, height: 10)
+                Text(quadrant.name)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(style.text)
+                Text("· " + quadrant.label.lowercased())
+                    .font(.system(size: 13))
+                    .foregroundStyle(style.text.opacity(0.7))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(list.count)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(style.dot)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            ForEach(list, id: \.id) { task in
+                wideRow(task, style: style)
+            }
+            if list.isEmpty {
+                Text("Пусто — перетащи сюда")
+                    .font(.system(size: 13))
+                    .foregroundStyle(style.text.opacity(0.75))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            }
+            Spacer(minLength: 6)
+        }
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(hovered ? Tokens.accent.opacity(0.12) : style.background, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: 1.5))
+        .reportZone("quad-\(quadrant.rawValue)", enabled: drag != nil)
+        .accessibilityLabel(quadrant.name)
+    }
+
+    private func wideRow(_ task: PlannerTask, style: QuadrantStyle) -> some View {
+        let today = DayMath.today()
+        let overdue = task.isOverdue(today: today)
+        return HStack(spacing: 2) {
+            Button { onToggle(task) } label: {
+                Circle()
+                    .strokeBorder(task.style.dot, lineWidth: 2)
+                    .frame(width: 20, height: 20)
+                    .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Отметить выполненной: " + task.title)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title)
+                    .font(.system(size: 15))
+                    .foregroundStyle(Tokens.text)
+                    .lineLimit(2)
+                Text(meta(task) + (task.project.map { " · " + $0.name } ?? ""))
+                    .font(.system(size: 12))
+                    .foregroundStyle(overdue ? Tokens.overdue : Tokens.caption)
+                    .lineLimit(1)
+            }
+            .padding(.vertical, 6)
+            Spacer(minLength: 0)
+        }
+        .padding(.trailing, 8)
+        .frame(minHeight: 50)
+        .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
+        .opacity(drag?.taskID == task.id ? 0.35 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { onEdit(task) }
+        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
+    }
+
+    private func meta(_ task: PlannerTask) -> String {
+        if let day = task.day {
+            let label = DayMath.label(offset: DayMath.offset(of: day))
+            return task.start.map { label + " " + ClockGrid.format(minutes: $0) } ?? label
+        }
+        return "бэклог"
+    }
+
+    // MARK: - Не разобрано
 
     /// Неразобранные задачи: серые, ждут, когда их перетащат в квадрант. Сюда же можно вернуть задачу.
     private var unsortedTray: some View {
@@ -106,9 +319,8 @@ struct MatrixView: View {
         .frame(height: 92)
         .background(hovered ? Tokens.accent.opacity(0.12) : style.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: 1.5))
-        .padding(.leading, labelWidth + 8)
-        .padding(.top, 8)
-        .reportZone("quad-0")
+        .padding(.leading, isList ? 0 : labelWidth + 8)
+        .reportZone("quad-0", enabled: drag != nil)
     }
 
     private func trayChip(_ task: PlannerTask) -> some View {
@@ -123,129 +335,6 @@ struct MatrixView: View {
             .opacity(drag?.taskID == task.id ? 0.35 : 1)
             .contentShape(Capsule())
             .onTapGesture { onEdit(task) }
-            .gesture(
-                LongPressGesture(minimumDuration: 0.3)
-                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
-                    .onChanged { value in
-                        if case .second(true, let dragValue?) = value {
-                            onDragChanged(task, dragValue.location, dragValue.startLocation)
-                        }
-                    }
-                    .onEnded { _ in onDragEnded() }
-            )
-    }
-
-    private func axisLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 11, weight: .semibold))
-            .kerning(0.6)
-            .foregroundStyle(Tokens.caption)
-            .frame(maxWidth: .infinity)
-    }
-
-    private func rowLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 11, weight: .semibold))
-            .kerning(0.6)
-            .foregroundStyle(Tokens.caption)
-            .fixedSize()
-            .rotationEffect(.degrees(-90))
-            .frame(width: labelWidth)
-            .frame(maxHeight: .infinity)
-    }
-
-    private func cell(_ quadrant: Quadrant) -> some View {
-        let style = quadrant.style
-        let list = items(for: quadrant)
-        let hovered = drag?.target == .quadrant(quadrant.rawValue)
-        return VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Circle().fill(style.dot).frame(width: 10, height: 10)
-                Text(quadrant.label)
-                    .font(.system(size: 12.5, weight: .bold))
-                    .foregroundStyle(style.text)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Text("\(list.count)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(style.dot)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 34)
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 3) {
-                    ForEach(list, id: \.id) { task in
-                        row(task, style: style)
-                    }
-                    if list.isEmpty {
-                        Text("Пусто — перетащи сюда")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(style.text.opacity(0.75))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(6)
-                    }
-                }
-                .padding(.horizontal, 5)
-                .padding(.bottom, 5)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(hovered ? Tokens.accent.opacity(0.12) : style.background, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: 1.5))
-        .reportZone("quad-\(quadrant.rawValue)")
-        .accessibilityLabel(quadrant.name)
-    }
-
-    private func row(_ task: PlannerTask, style: QuadrantStyle) -> some View {
-        let today = DayMath.today()
-        let overdue = task.isOverdue(today: today)
-        let meta: String
-        if let day = task.day {
-            let label = DayMath.label(offset: DayMath.offset(of: day))
-            meta = task.start.map { label + " " + ClockGrid.format(minutes: $0) } ?? label
-        } else {
-            meta = "бэклог"
-        }
-        return HStack(spacing: 0) {
-            Button { onToggle(task) } label: {
-                Circle()
-                    .strokeBorder(task.style.dot, lineWidth: 2)
-                    .frame(width: 16, height: 16)
-                    .frame(width: 34)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Отметить выполненной: " + task.title)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(task.title)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(style.text)
-                    .lineLimit(2)
-                Text(meta)
-                    .font(.system(size: 11))
-                    .foregroundStyle(overdue ? Tokens.overdue : Tokens.caption)
-                    .lineLimit(1)
-            }
-            .padding(.vertical, 5)
-            Spacer(minLength: 0)
-        }
-        .padding(.trailing, 6)
-        .frame(minHeight: 46)
-        .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 10))
-        .opacity(drag?.taskID == task.id ? 0.35 : 1)
-        .contentShape(Rectangle())
-        .onTapGesture { onEdit(task) }
-        .gesture(
-            LongPressGesture(minimumDuration: 0.3)
-                .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
-                .onChanged { value in
-                    if case .second(true, let dragValue?) = value {
-                        onDragChanged(task, dragValue.location, dragValue.startLocation)
-                    }
-                }
-                .onEnded { _ in onDragEnded() }
-        )
+            .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
     }
 }

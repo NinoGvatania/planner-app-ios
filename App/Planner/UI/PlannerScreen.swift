@@ -189,7 +189,8 @@ struct PlannerScreen: View {
                 onDragChanged: dragChanged,
                 onDragEnded: dragEnded,
                 onEdit: { editingTask = $0 },
-                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - 64 - 110) : .infinity
+                onDelete: deleteTask,
+                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - 8) : .infinity
             )
         }
         .coordinateSpace(name: "planner")
@@ -384,7 +385,9 @@ struct PlannerScreen: View {
             drag = DragState(taskID: task.id, title: task.title, duration: task.duration, location: location,
                              grabOffsetY: grab, fromTimeline: task.day != nil, target: nil)
             selectedID = nil
-            if drawerOpen && task.isInBacklog { drawerOpen = false }
+            if drawerOpen && task.isInBacklog {
+                withAnimation(.spring(duration: 0.3)) { drawerOpen = false }
+            }
         }
         drag?.location = location
         let target = dropTarget(at: location, duration: task.duration, grab: drag?.grabOffsetY ?? 0)
@@ -476,6 +479,16 @@ struct PlannerScreen: View {
         NotificationScheduler.sync(tasks)
     }
 
+    /// Удалить задачу (свайп в бэклоге, корзина в редакторе).
+    private func deleteTask(_ task: PlannerTask) {
+        if selectedID == task.id { selectedID = nil }
+        if editingTask?.id == task.id { editingTask = nil }
+        let title = task.title
+        context.delete(task)
+        showToast("Удалил: «\(title)»")
+        NotificationScheduler.sync(tasks.filter { $0.id != task.id })
+    }
+
     private func resize(_ task: PlannerTask, to duration: Int) {
         task.duration = duration
         NotificationScheduler.sync(tasks)
@@ -538,7 +551,9 @@ struct PlannerScreen: View {
             task.backlogRank = rank
         }
         showOverdue = false
-        if !overdue.isEmpty { drawerOpen = true }
+        if !overdue.isEmpty {
+            withAnimation(.spring(duration: 0.3)) { drawerOpen = true }
+        }
         let n = overdue.count
         showToast(n == 0 ? "Просроченных задач нет" : "Убрал в бэклог: \(n) " + DayMath.plural(n, "задачу", "задачи", "задач"))
         NotificationScheduler.sync(tasks)
@@ -611,7 +626,9 @@ struct PlannerScreen: View {
             created.append(task)
         }
         guard !created.isEmpty else { return }
-        if created.contains(where: { $0.isInBacklog }) { drawerOpen = true }
+        if created.contains(where: { $0.isInBacklog }) {
+            withAnimation(.spring(duration: 0.3)) { drawerOpen = true }
+        }
         let n = created.count
         showToast("Добавил \(n) " + DayMath.plural(n, "задачу", "задачи", "задач"))
         NotificationScheduler.sync(tasks + created)

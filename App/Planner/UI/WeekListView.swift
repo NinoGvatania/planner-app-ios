@@ -107,15 +107,6 @@ struct WeekListView: View {
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .gesture(
-            LongPressGesture(minimumDuration: 0.3)
-                .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
-                .onChanged { value in
-                    if case .second(true, let dragValue?) = value {
-                        onDragChanged(task, dragValue.location, dragValue.startLocation)
-                    }
-                }
-                .onEnded { _ in onDragEnded() }
-        )
+        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
     }
 }

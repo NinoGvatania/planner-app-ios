@@ -31,6 +31,8 @@ final class DictationSplitterTests: XCTestCase {
         XCTAssertEqual(DictationSplitter.split("Купить ещё молока"), ["Купить ещё молока"])
         XCTAssertEqual(DictationSplitter.split("Посмотреть второе видео"), ["Посмотреть второе видео"])
         XCTAssertEqual(DictationSplitter.split("первое позвонить маме, второе купить хлеб"), ["первое позвонить маме", "купить хлеб"])
+        XCTAssertEqual(DictationSplitter.split("позвонить маме точка купить хлеб следующая записаться к врачу"),
+                       ["позвонить маме", "купить хлеб", "записаться к врачу"])
     }
 
     func testEmptyAndJunk() {

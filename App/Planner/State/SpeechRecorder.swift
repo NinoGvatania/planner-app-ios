@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import QuartzCore
 import Speech
 
 /// Диктовка по-русски на системном распознавании речи (SFSpeechRecognizer + AVAudioEngine).
@@ -35,7 +36,16 @@ final class SpeechRecorder {
     private var finalTimeout: Task<Void, Never>?
 
     /// Длина паузы, после которой начинается новая задача.
-    private let pauseThreshold: TimeInterval = 1.1
+    private let pauseThreshold: TimeInterval = 1.0
+    /// Уровень сигнала, выше которого считаем, что человек говорит.
+    private let voiceThreshold: Double = 0.08
+
+    /// Сырой текст распознавателя и тот же текст с переносами по таймкодам сегментов.
+    private var rawText = ""
+    private var segmentText = ""
+    /// Границы задач по паузам в звуке: после скольких слов была тишина дольше порога.
+    private var breaks: [Int] = []
+    private var lastVoiced: TimeInterval = 0
 
     func start() async {
         guard !isStarting, status != .listening else { return }
@@ -116,13 +126,15 @@ final class SpeechRecorder {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
+        rawText = ""
+        segmentText = ""
+        breaks = []
+        lastVoiced = 0
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             request.append(buffer)
             let power = Self.power(of: buffer)
-            Task { @MainActor in
-                guard let self, abs(self.level - power) > 0.02 else { return }
-                self.level = power
-            }
+            let time = CACurrentMediaTime()
+            Task { @MainActor in self?.audioLevel(power, at: time) }
         }
         engine.prepare()
         try engine.start()
@@ -135,9 +147,46 @@ final class SpeechRecorder {
         }
     }
 
+    /// Уровень сигнала и паузы: речь после тишины дольше порога — граница новой задачи.
+    private func audioLevel(_ power: Double, at time: TimeInterval) {
+        if abs(level - power) > 0.02 { level = power }
+        guard status == .listening, power > voiceThreshold else { return }
+        if lastVoiced > 0, time - lastVoiced > pauseThreshold {
+            let words = rawText.split(whereSeparator: { $0.isWhitespace }).count
+            if words > 0, breaks.last != words {
+                breaks.append(words)
+                composeLiveText()
+            }
+        }
+        lastVoiced = time
+    }
+
+    /// Живой текст: сырой текст с переносами по паузам в звуке и по таймкодам сегментов.
+    private func composeLiveText() {
+        let words = rawText.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        var cuts = Set(breaks)
+        var count = 0
+        for line in segmentText.components(separatedBy: "\n") {
+            count += line.split(whereSeparator: { $0.isWhitespace }).count
+            cuts.insert(count)
+        }
+        cuts.remove(0)
+        cuts.remove(words.count)
+        var out = ""
+        for (index, word) in words.enumerated() {
+            out += word
+            if index + 1 < words.count {
+                out += cuts.contains(index + 1) ? "\n" : " "
+            }
+        }
+        liveText = out
+    }
+
     private func handle(result: SFSpeechRecognitionResult?, error: Error?) {
         if let result {
-            liveText = Self.text(from: result.bestTranscription, pause: pauseThreshold)
+            rawText = result.bestTranscription.formattedString
+            segmentText = Self.text(from: result.bestTranscription, pause: pauseThreshold)
+            composeLiveText()
             if result.isFinal {
                 if status == .listening {
                     // Лимит системы: закрываем заход, отдаём текст и начинаем новый.
@@ -175,6 +224,10 @@ final class SpeechRecorder {
         let finished = liveText
         endSession()
         liveText = ""
+        rawText = ""
+        segmentText = ""
+        breaks = []
+        lastVoiced = 0
         if !finished.isEmpty { onSegmentFinished?(finished) }
     }
 

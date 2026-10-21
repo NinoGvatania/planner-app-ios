@@ -1,8 +1,9 @@
 import PlannerCore
 import SwiftUI
 
-/// Панель бэклога снизу: заголовок (тап/свайп открывает), список, строка быстрого ввода.
-/// Высота панели явная: 130 pt свёрнутая, при свайпе тянется за пальцем.
+/// Панель бэклога снизу. Три положения: свёрнута (заголовок + строка ввода), открыта (до 6 строк)
+/// и на весь экран. Тап по заголовку переключает, свайп тянет за пальцем и отпускает к ближайшему
+/// положению. Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
 struct BacklogDrawerView: View {
     let tasks: [PlannerTask]
     @Binding var isOpen: Bool
@@ -14,29 +15,30 @@ struct BacklogDrawerView: View {
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
     let onEdit: (PlannerTask) -> Void
-    /// Сколько высоты экрана панель может занять в открытом виде (с клавиатурой — меньше).
+    let onDelete: (PlannerTask) -> Void
+    /// Сколько высоты экрана панель может занять (с клавиатурой — меньше).
     var maxHeight: CGFloat = .infinity
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
-    /// Только что был свайп — следующий тап кнопки заголовка игнорируется.
-    @State private var swiped = false
+    /// Панель раскрыта на весь экран.
+    @State private var isFull = false
 
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
     private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * 50 + 8 }
-    private var openHeight: CGFloat {
-        min(Tokens.drawerCollapsed + listHeight, max(Tokens.drawerCollapsed + 100, maxHeight))
-    }
-
-    private var hint: String {
-        guard let drag = drag else { return isOpen ? "Свернуть" : "Открыть" }
-        if drag.target == .backlog { return drag.fromTimeline ? "Отпусти — уберу сюда" : "Отпусти — оставлю здесь" }
-        return drag.fromTimeline ? "Сюда — в бэклог" : "Тащи наверх"
-    }
+    private var fullHeight: CGFloat { maxHeight.isFinite ? max(Tokens.drawerCollapsed + 100, maxHeight) : Tokens.drawerCollapsed + listHeight }
+    private var openHeight: CGFloat { min(Tokens.drawerCollapsed + listHeight, fullHeight) }
+    private var canExpand: Bool { fullHeight > openHeight + 60 }
+    private var restHeight: CGFloat { isFull && canExpand ? fullHeight : (isOpen ? openHeight : Tokens.drawerCollapsed) }
 
     private var height: CGFloat {
-        let base = isOpen ? openHeight : Tokens.drawerCollapsed
-        return min(openHeight, max(Tokens.drawerCollapsed, base - dragDelta))
+        min(fullHeight, max(Tokens.drawerCollapsed, restHeight - dragDelta))
+    }
+
+    private var hint: String? {
+        guard let drag = drag else { return nil }
+        if drag.target == .backlog { return drag.fromTimeline ? "Отпусти — уберу сюда" : "Отпусти — оставлю здесь" }
+        return drag.fromTimeline ? "Сюда — в бэклог" : "Тащи наверх"
     }
 
     var body: some View {
@@ -62,45 +64,14 @@ struct BacklogDrawerView: View {
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
                 .ignoresSafeArea(edges: .bottom)
         }
-        .animation(.spring(duration: 0.28), value: isOpen)
-        .animation(.interactiveSpring(), value: dragDelta)
+        .onChange(of: isOpen) { _, open in
+            if !open { isFull = false }
+        }
     }
+
+    // MARK: - Заголовок
 
     private var header: some View {
-        Button {
-            if swiped { swiped = false; return }
-            isOpen.toggle()
-        } label: {
-            headerContent
-        }
-        .buttonStyle(.plain)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 10, coordinateSpace: .named("planner"))
-                .onChanged { value in
-                    dragDelta = value.translation.height
-                }
-                .onEnded { value in
-                    let dy = value.translation.height
-                    let projected = value.predictedEndTranslation.height
-                    if dy < -40 || projected < -80 {
-                        isOpen = true
-                    } else if dy > 40 || projected > 80 {
-                        isOpen = false
-                    } else {
-                        isOpen = height > (Tokens.drawerCollapsed + openHeight) / 2
-                    }
-                    dragDelta = 0
-                    swiped = true
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(0.4))
-                        swiped = false
-                    }
-                }
-        )
-        .accessibilityLabel(isOpen ? "Свернуть бэклог" : "Открыть бэклог")
-    }
-
-    private var headerContent: some View {
         VStack(spacing: 8) {
             Capsule()
                 .fill(Color(hex: 0x3A3B41))
@@ -117,14 +88,18 @@ struct BacklogDrawerView: View {
                         .background(Tokens.badge, in: Capsule())
                 }
                 Spacer()
-                HStack(spacing: 4) {
+                if let hint = hint {
                     Text(hint)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Tokens.accent)
+                } else {
                     Image(systemName: "chevron.up")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Tokens.caption)
                         .rotationEffect(.degrees(isOpen ? 180 : 0))
+                        .frame(width: 30, height: 30)
+                        .background(Tokens.badge, in: Circle())
                 }
-                .font(.system(size: 13))
-                .foregroundStyle(drag == nil ? Tokens.caption : Tokens.accent)
             }
         }
         .padding(.horizontal, 18)
@@ -133,26 +108,74 @@ struct BacklogDrawerView: View {
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .foregroundStyle(Tokens.text)
+        .onTapGesture(perform: toggle)
+        .gesture(
+            DragGesture(minimumDistance: 10, coordinateSpace: .named("planner"))
+                .onChanged { value in
+                    dragDelta = value.translation.height
+                }
+                .onEnded { value in
+                    let projected = restHeight - value.predictedEndTranslation.height
+                    settle(to: projected)
+                }
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(isOpen ? "Свернуть бэклог" : "Открыть бэклог")
     }
 
-    private var list: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 0) {
-                ForEach(tasks, id: \.id) { task in
-                    row(task)
-                }
-                if tasks.isEmpty {
-                    Text("Пусто — всё разложено по дням.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Tokens.muted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 10)
-                }
+    /// Тап: свёрнута → открыта, открыта → свёрнута, на весь экран → открыта.
+    private func toggle() {
+        withAnimation(.spring(duration: 0.3)) {
+            if isFull && canExpand {
+                isFull = false
+            } else {
+                isOpen.toggle()
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
         }
+    }
+
+    /// Отпустили свайп: к ближайшему положению по тому, куда летел палец.
+    private func settle(to projected: CGFloat) {
+        var detents = [Tokens.drawerCollapsed, openHeight]
+        if canExpand { detents.append(fullHeight) }
+        let target = detents.min { abs($0 - projected) < abs($1 - projected) } ?? Tokens.drawerCollapsed
+        withAnimation(.spring(duration: 0.3)) {
+            dragDelta = 0
+            isFull = canExpand && target == fullHeight
+            isOpen = target > Tokens.drawerCollapsed
+        }
+    }
+
+    // MARK: - Список
+
+    private var list: some View {
+        List {
+            ForEach(tasks, id: \.id) { task in
+                row(task)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                    .listRowSeparator(.hidden)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            onDelete(task)
+                        } label: {
+                            Label("Удалить", systemImage: "trash")
+                        }
+                    }
+            }
+            if tasks.isEmpty {
+                Text("Пусто — всё разложено по дням.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Tokens.muted)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 50)
+        .scrollDisabled(height <= Tokens.drawerCollapsed + 1)
     }
 
     private func row(_ task: PlannerTask) -> some View {
@@ -189,17 +212,10 @@ struct BacklogDrawerView: View {
         .foregroundStyle(Tokens.text)
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .gesture(
-            LongPressGesture(minimumDuration: 0.3)
-                .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("planner")))
-                .onChanged { value in
-                    if case .second(true, let dragValue?) = value {
-                        onDragChanged(task, dragValue.location, dragValue.startLocation)
-                    }
-                }
-                .onEnded { _ in onDragEnded() }
-        )
+        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
     }
+
+    // MARK: - Ввод
 
     private var inputRow: some View {
         HStack(alignment: .top, spacing: 8) {
