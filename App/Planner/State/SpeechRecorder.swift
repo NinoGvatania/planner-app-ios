@@ -35,8 +35,8 @@ final class SpeechRecorder {
     private var awaitingFinal = false
     private var finalTimeout: Task<Void, Never>?
 
-    /// Длина паузы, после которой начинается новая задача.
-    private let pauseThreshold: TimeInterval = 1.0
+    /// Длина паузы между сегментами распознавателя, после которой начинается новая задача.
+    private let pauseThreshold: TimeInterval = 2.0
     /// Уровень сигнала, выше которого считаем, что человек говорит.
     private let voiceThreshold: Double = 0.08
 
@@ -147,39 +147,15 @@ final class SpeechRecorder {
         }
     }
 
-    /// Уровень сигнала и паузы: речь после тишины дольше порога — граница новой задачи.
+    /// Уровень сигнала для волны. Паузы в звуке задачи больше не делят: это резало фразы на куски.
     private func audioLevel(_ power: Double, at time: TimeInterval) {
         if abs(level - power) > 0.02 { level = power }
-        guard status == .listening, power > voiceThreshold else { return }
-        if lastVoiced > 0, time - lastVoiced > pauseThreshold {
-            let words = rawText.split(whereSeparator: { $0.isWhitespace }).count
-            if words > 0, breaks.last != words {
-                breaks.append(words)
-                composeLiveText()
-            }
-        }
-        lastVoiced = time
+        if power > voiceThreshold { lastVoiced = time }
     }
 
-    /// Живой текст: сырой текст с переносами по паузам в звуке и по таймкодам сегментов.
+    /// Живой текст: сырой текст распознавателя с переносами только по долгим паузам между сегментами.
     private func composeLiveText() {
-        let words = rawText.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        var cuts = Set(breaks)
-        var count = 0
-        for line in segmentText.components(separatedBy: "\n") {
-            count += line.split(whereSeparator: { $0.isWhitespace }).count
-            cuts.insert(count)
-        }
-        cuts.remove(0)
-        cuts.remove(words.count)
-        var out = ""
-        for (index, word) in words.enumerated() {
-            out += word
-            if index + 1 < words.count {
-                out += cuts.contains(index + 1) ? "\n" : " "
-            }
-        }
-        liveText = out
+        liveText = segmentText.isEmpty ? rawText : segmentText
     }
 
     private func handle(result: SFSpeechRecognitionResult?, error: Error?) {

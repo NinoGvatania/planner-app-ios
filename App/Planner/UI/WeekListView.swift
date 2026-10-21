@@ -9,6 +9,7 @@ struct WeekListView: View {
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
     let onEdit: (PlannerTask) -> Void
+    var onDragCancelled: (() -> Void)? = nil
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -107,6 +108,6 @@ struct WeekListView: View {
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
+        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 }

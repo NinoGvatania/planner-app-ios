@@ -1,9 +1,11 @@
 import PlannerCore
 import SwiftUI
 
-/// Панель бэклога снизу. Три положения: свёрнута (заголовок + строка ввода), открыта (до 6 строк)
-/// и на весь экран. Тап по заголовку переключает, свайп тянет за пальцем и отпускает к ближайшему
-/// положению. Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
+/// Панель бэклога снизу. Три положения: свёрнута (заголовок, две верхние задачи «торчат», строка ввода),
+/// открыта (до 6 строк) и на весь экран. Тап по заголовку переключает, свайп тянет за пальцем и отпускает
+/// к ближайшему положению. Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
+/// Жест удержания висит на контейнере списка, а не на строках: строка List может быть уничтожена,
+/// когда панель сворачивается в начале переноса, и жест вместе с ней.
 struct BacklogDrawerView: View {
     let tasks: [PlannerTask]
     @Binding var isOpen: Bool
@@ -18,21 +20,34 @@ struct BacklogDrawerView: View {
     let onDelete: (PlannerTask) -> Void
     /// Сколько высоты экрана панель может занять (с клавиатурой — меньше).
     var maxHeight: CGFloat = .infinity
+    var onDragCancelled: (() -> Void)? = nil
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
     /// Панель раскрыта на весь экран.
     @State private var isFull = false
+    /// Рамки строк в координатах «planner» — чтобы понять, какую задачу взяли удержанием.
+    @State private var rowFrames: [UUID: CGRect] = [:]
+    @State private var draggingTask: PlannerTask?
 
+    private let rowHeight: CGFloat = 50
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
-    private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * 50 + 8 }
-    private var fullHeight: CGFloat { maxHeight.isFinite ? max(Tokens.drawerCollapsed + 100, maxHeight) : Tokens.drawerCollapsed + listHeight }
+    /// Сколько строк «торчит» в свёрнутом виде.
+    private var peekRows: Int { min(tasks.count, 2) }
+    private var peekHeight: CGFloat { peekRows == 0 ? 0 : CGFloat(peekRows) * rowHeight + 4 }
+    private var collapsedHeight: CGFloat { Tokens.drawerCollapsed + peekHeight }
+    private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * rowHeight + 8 }
+    private var fullHeight: CGFloat { maxHeight.isFinite ? max(collapsedHeight + 100, maxHeight) : Tokens.drawerCollapsed + listHeight }
     private var openHeight: CGFloat { min(Tokens.drawerCollapsed + listHeight, fullHeight) }
     private var canExpand: Bool { fullHeight > openHeight + 60 }
-    private var restHeight: CGFloat { isFull && canExpand ? fullHeight : (isOpen ? openHeight : Tokens.drawerCollapsed) }
+
+    private var restHeight: CGFloat {
+        guard isOpen else { return collapsedHeight }
+        return isFull && canExpand ? fullHeight : openHeight
+    }
 
     private var height: CGFloat {
-        min(fullHeight, max(Tokens.drawerCollapsed, restHeight - dragDelta))
+        min(fullHeight, max(collapsedHeight, restHeight - dragDelta))
     }
 
     private var hint: String? {
@@ -48,6 +63,28 @@ struct BacklogDrawerView: View {
                 .frame(height: max(0, height - Tokens.drawerCollapsed), alignment: .top)
                 .clipped()
                 .contentShape(Rectangle())
+                .onPreferenceChange(BacklogRowFramesKey.self) { rowFrames = $0 }
+                .gesture(
+                    HoldDragGesture(
+                        onChanged: { location, start in
+                            if draggingTask == nil {
+                                guard let task = tasks.first(where: { rowFrames[$0.id]?.contains(start) == true }) else { return }
+                                draggingTask = task
+                            }
+                            if let task = draggingTask {
+                                onDragChanged(task, location, start)
+                            }
+                        },
+                        onEnded: {
+                            if draggingTask != nil { onDragEnded() }
+                            draggingTask = nil
+                        },
+                        onCancelled: {
+                            if draggingTask != nil { (onDragCancelled ?? onDragEnded)() }
+                            draggingTask = nil
+                        }
+                    )
+                )
             inputRow
         }
         .frame(maxWidth: .infinity)
@@ -64,6 +101,7 @@ struct BacklogDrawerView: View {
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
                 .ignoresSafeArea(edges: .bottom)
         }
+        .animation(.spring(duration: 0.3), value: tasks.count)
         .onChange(of: isOpen) { _, open in
             if !open { isFull = false }
         }
@@ -137,13 +175,13 @@ struct BacklogDrawerView: View {
 
     /// Отпустили свайп: к ближайшему положению по тому, куда летел палец.
     private func settle(to projected: CGFloat) {
-        var detents = [Tokens.drawerCollapsed, openHeight]
+        var detents = [collapsedHeight, openHeight]
         if canExpand { detents.append(fullHeight) }
-        let target = detents.min { abs($0 - projected) < abs($1 - projected) } ?? Tokens.drawerCollapsed
+        let target = detents.min { abs($0 - projected) < abs($1 - projected) } ?? collapsedHeight
         withAnimation(.spring(duration: 0.3)) {
             dragDelta = 0
             isFull = canExpand && target == fullHeight
-            isOpen = target > Tokens.drawerCollapsed
+            isOpen = target > collapsedHeight
         }
     }
 
@@ -174,8 +212,8 @@ struct BacklogDrawerView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, 50)
-        .scrollDisabled(height <= Tokens.drawerCollapsed + 1)
+        .environment(\.defaultMinListRowHeight, rowHeight)
+        .scrollDisabled(!isOpen)
     }
 
     private func row(_ task: PlannerTask) -> some View {
@@ -207,12 +245,16 @@ struct BacklogDrawerView: View {
                 .foregroundStyle(Color(hex: 0x5A5B63))
                 .padding(.trailing, 4)
         }
-        .frame(height: 50)
+        .frame(height: rowHeight)
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .foregroundStyle(Tokens.text)
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
+        .background(
+            GeometryReader { geometry in
+                Color.clear.preference(key: BacklogRowFramesKey.self, value: [task.id: geometry.frame(in: .named("planner"))])
+            }
+        )
     }
 
     // MARK: - Ввод
@@ -253,5 +295,13 @@ struct BacklogDrawerView: View {
         .padding(.top, 8)
         .frame(height: 60, alignment: .top)
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1) }
+    }
+}
+
+/// Рамки строк бэклога в координатах «planner»; живут внутри панели и не трогают экран.
+struct BacklogRowFramesKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] { [:] }
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }

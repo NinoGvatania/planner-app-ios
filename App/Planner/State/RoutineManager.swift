@@ -114,10 +114,7 @@ enum RoutineManager {
             guard let day = copy.day, day >= today else { continue }
             context.delete(copy)
         }
-        if let kept, let day = kept.day, day >= today, !matches(routine, day: day) {
-            // Редактируемая копия стоит на день, который больше не подходит: оставляем, но она уже не рутина.
-            kept.isRoutine = false
-        }
+        // Редактируемая копия остаётся как есть, даже если её день больше не подходит под расписание.
         routine.materializedThrough = nil
         materialize(in: context)
     }

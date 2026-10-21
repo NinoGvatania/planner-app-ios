@@ -11,6 +11,8 @@ struct HoldDragGesture: UIGestureRecognizerRepresentable {
     /// (где палец, где палец был в момент срабатывания).
     var onChanged: (CGPoint, CGPoint) -> Void
     var onEnded: () -> Void
+    /// Система отменила жест (звонок, уход в фон): состояние сбрасывается, сброс не считается.
+    var onCancelled: (() -> Void)? = nil
 
     final class Coordinator: NSObject {
         var start: CGPoint = .zero
@@ -37,8 +39,10 @@ struct HoldDragGesture: UIGestureRecognizerRepresentable {
             onChanged(location, location)
         case .changed:
             onChanged(location, context.coordinator.start)
-        case .ended, .cancelled, .failed:
+        case .ended:
             onEnded()
+        case .cancelled, .failed:
+            (onCancelled ?? onEnded)()
         default:
             break
         }

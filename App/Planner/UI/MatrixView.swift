@@ -12,6 +12,7 @@ struct MatrixView: View {
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
     let onEdit: (PlannerTask) -> Void
+    var onDragCancelled: (() -> Void)? = nil
 
     @AppStorage("matrixLayout") private var layoutRaw = "grid"
     private let labelWidth: CGFloat = 18
@@ -187,7 +188,7 @@ struct MatrixView: View {
         .opacity(drag?.taskID == task.id ? 0.35 : 1)
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
+        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 
     // MARK: - Список по приоритету
@@ -267,7 +268,7 @@ struct MatrixView: View {
         .opacity(drag?.taskID == task.id ? 0.35 : 1)
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
+        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 
     private func meta(_ task: PlannerTask) -> String {
@@ -335,6 +336,6 @@ struct MatrixView: View {
             .opacity(drag?.taskID == task.id ? 0.35 : 1)
             .contentShape(Capsule())
             .onTapGesture { onEdit(task) }
-            .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded))
+            .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 }

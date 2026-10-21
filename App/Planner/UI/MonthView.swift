@@ -15,13 +15,11 @@ struct MonthView: View {
     private var monthStart: Date { DayMath.monthStart(of: anchor) }
     private var monthIndex: Int { DayMath.monthIndex(monthStart) }
 
-    /// Недели месяца как смещения дней от сегодняшнего.
+    /// Недели месяца как смещения дней от сегодняшнего: всегда шесть строк, чтобы сетка не прыгала.
     private var weeks: [[Int]] {
         let first = DayMath.offset(of: monthStart)
-        let last = DayMath.offset(of: DayMath.date(monthStart, addingMonths: 1)) - 1
         let gridStart = DayMath.weekStartOffset(containing: first)
-        let rows = Int(ceil(Double(last - gridStart + 1) / 7))
-        return (0..<rows).map { row in (0..<7).map { gridStart + row * 7 + $0 } }
+        return (0..<6).map { row in (0..<7).map { gridStart + row * 7 + $0 } }
     }
 
     private var tasksByDay: [Date: [PlannerTask]] {

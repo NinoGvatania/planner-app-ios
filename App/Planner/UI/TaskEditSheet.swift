@@ -147,19 +147,21 @@ struct TaskEditSheet: View {
                     }
                 }
             }
-            .confirmationDialog("Удалить «\(task.title)»?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            .alert("Удалить «\(task.title)»?", isPresented: $confirmDelete) {
                 Button("Удалить", role: .destructive) {
-                    onDelete()
                     dismiss()
+                    onDelete()
                 }
                 Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Вернуть задачу будет нельзя.")
             }
         }
         .tint(Tokens.accent)
         .presentationDetents([.large])
         .presentationBackground(Tokens.panel)
         .onAppear { projectName = task.project?.name ?? "" }
-        .onDisappear { applyProject() }
+        .onDisappear { if !task.isDeleted { applyProject() } }
         .onChange(of: task.title) { _, _ in onChanged() }
         .onChange(of: task.duration) { _, _ in onChanged() }
         .onChange(of: task.quadrantRaw) { _, _ in
@@ -311,6 +313,7 @@ struct TaskEditSheet: View {
     }
 
     private func applyProject() {
+        guard !task.isDeleted else { return }
         let name = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
         if name.isEmpty {
             task.project = nil

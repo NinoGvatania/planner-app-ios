@@ -8,8 +8,11 @@ struct OverdueSheet: View {
     let onFitToday: () -> Void
     let onFitTomorrow: () -> Void
     let onToBacklog: () -> Void
+    let onDelete: (PlannerTask) -> Void
+    let onChanged: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var moveOpen = false
+    @State private var editing: PlannerTask?
 
     private var fromLabel: String {
         let next = Int((Double(DayMath.nowMinutes()) / 15).rounded(.up)) * 15
@@ -88,26 +91,43 @@ struct OverdueSheet: View {
                 .padding(.bottom, 12)
             }
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(tasks, id: \.id) { task in
-                        row(task)
-                    }
-                    if tasks.isEmpty {
-                        Text("Всё чисто — просроченных нет")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Tokens.caption)
-                            .padding(.vertical, 24)
-                    }
+            List {
+                ForEach(tasks, id: \.id) { task in
+                    row(task)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .contentShape(Rectangle())
+                        .onTapGesture { editing = task }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                onDelete(task)
+                            } label: {
+                                Label("Удалить", systemImage: "trash")
+                            }
+                        }
                 }
-                .padding(.horizontal, 16)
+                if tasks.isEmpty {
+                    Text("Всё чисто — просроченных нет")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Tokens.caption)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
         .foregroundStyle(Tokens.text)
         .background(Tokens.panel)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
         .presentationBackground(Tokens.panel)
+        .sheet(item: $editing) { task in
+            TaskEditSheet(task: task, onDelete: { onDelete(task) }, onChanged: onChanged)
+        }
     }
 
     private func row(_ task: PlannerTask) -> some View {

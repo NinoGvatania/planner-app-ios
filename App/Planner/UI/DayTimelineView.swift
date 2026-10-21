@@ -43,6 +43,7 @@ struct DayTimelineView: View {
     var onAutoScrollTick: (() -> Void)? = nil
     /// Увеличивается, когда нужно прокрутить к текущему времени (кнопка «к сегодня»).
     var scrollToNowRequest: Int = 0
+    var onDragCancelled: (() -> Void)? = nil
 
     @State private var liveDuration: Int?
     @State private var liveStart: Int?
@@ -55,6 +56,8 @@ struct DayTimelineView: View {
     @State private var autoScroll: Task<Void, Never>?
     @State private var autoScrollDirection = 0
     @State private var resizeTracker = ResizeTracker()
+    /// Строка задач без времени развёрнута (иначе — одна задача и «+N»).
+    @State private var allDayExpanded = false
 
     private let topInset: CGFloat = 10
     private let bottomInset: CGFloat = 26
@@ -239,21 +242,46 @@ struct DayTimelineView: View {
 
     // MARK: - Весь день
 
+    /// Сколько задач без времени скрыто в свёрнутом виде (по всем колонкам).
+    private var hiddenAllDayCount: Int {
+        guard !allDayExpanded else { return 0 }
+        var hidden = 0
+        for day in days {
+            let date = date(day)
+            let count = tasks.filter { $0.day == date && $0.start == nil }.count
+            hidden += max(0, count - 1)
+        }
+        return hidden
+    }
+
     private var allDayRow: some View {
         HStack(alignment: .top, spacing: 0) {
-            Text("весь\nдень")
-                .font(.system(size: 11))
-                .foregroundStyle(Tokens.muted)
-                .multilineTextAlignment(.trailing)
-                .frame(width: Tokens.gutter - 7, alignment: .trailing)
-                .padding(.trailing, 7)
-                .padding(.top, 9)
+            allDayToggle
             ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                 let hovered = drag?.target == .allDay(day: day)
                 let date = date(day)
+                let list = allDay(column: index, day: day)
+                let real = list.filter { $0.day == date }
+                let shown = allDayExpanded ? real : Array(real.prefix(1))
+                let phantoms = list.filter { $0.day != date }
                 VStack(spacing: 4) {
-                    ForEach(allDay(column: index, day: day), id: \.id) { task in
+                    ForEach(shown + phantoms, id: \.id) { task in
                         allDayChip(task, phantom: task.day != date)
+                    }
+                    if !allDayExpanded, real.count > 1 {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) { allDayExpanded = true }
+                        } label: {
+                            Text("+\(real.count - 1)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Tokens.caption)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, narrowColumns ? 4 : 10)
+                                .frame(height: 18)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ещё \(real.count - 1): показать все")
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 40, alignment: .top)
@@ -265,6 +293,30 @@ struct DayTimelineView: View {
             }
         }
         .padding(.trailing, 8)
+    }
+
+    /// Кнопка слева от строки без времени: стрелка и число скрытых задач.
+    private var allDayToggle: some View {
+        let hidden = hiddenAllDayCount
+        let active = hidden > 0 || allDayExpanded
+        return Button {
+            withAnimation(.easeOut(duration: 0.2)) { allDayExpanded.toggle() }
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: allDayExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                Text(hidden > 0 ? "+\(hidden)" : "")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(height: 13)
+            }
+            .foregroundStyle(active ? Tokens.caption : Tokens.muted.opacity(0.5))
+            .frame(width: Tokens.gutter - 7, height: Tokens.hitTarget)
+            .padding(.trailing, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!active)
+        .accessibilityLabel(allDayExpanded ? "Свернуть задачи без времени" : "Показать все задачи без времени")
     }
 
     private func allDayChip(_ task: PlannerTask, phantom: Bool) -> some View {
@@ -407,12 +459,17 @@ struct DayTimelineView: View {
                     let stretched = end > startMinutes ? min(end - startMinutes, ClockGrid.dayEnd - startMinutes) : 30
                     let duration = max(15, stretched)
                     creating = (day: day, start: ClockGrid.clampedStart(startMinutes, duration: duration), duration: duration)
-                    updateAutoScroll(fingerY: location.y - scroll.offset + viewport.minY)
+                    if abs(location.y - start.y) > 8 {
+                        updateAutoScroll(fingerY: location.y - scroll.offset + viewport.minY)
+                    }
                 }, onEnded: {
                     stopAutoScroll()
                     if let creating = creating {
                         onCreate(creating.day, creating.start, creating.duration)
                     }
+                    creating = nil
+                }, onCancelled: {
+                    stopAutoScroll()
                     creating = nil
                 })
             )
@@ -543,7 +600,8 @@ struct DayTimelineView: View {
     private func dragGesture(for task: PlannerTask) -> some UIGestureRecognizerRepresentable {
         HoldDragGesture(
             onChanged: { location, start in onDragChanged(task, location, start) },
-            onEnded: onDragEnded
+            onEnded: onDragEnded,
+            onCancelled: onDragCancelled ?? onDragEnded
         )
     }
 

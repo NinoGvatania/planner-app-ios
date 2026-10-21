@@ -16,8 +16,9 @@ struct PlannerScreen: View {
     @State private var showOverdue = false
     @State private var showVoice = false
     @State private var input = ""
-    @State private var toast: String?
+    @State private var toast: ToastMessage?
     @State private var toastTask: Task<Void, Never>?
+    @State private var toastAction: (() -> Void)?
     @State private var selectedID: UUID?
     @State private var drag: DragState?
     @State private var zones: [String: CGRect] = [:]
@@ -107,6 +108,16 @@ struct PlannerScreen: View {
     }
 
     var body: some View {
+        // Размер берётся у GeometryReader: он задаётся системой и не зависит от содержимого,
+        // иначе панель бэклога «на весь экран» раздувала бы стек и сама же росла от него.
+        GeometryReader { geometry in
+            screen
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                .onChange(of: geometry.size, initial: true) { _, size in rootSize = size }
+        }
+    }
+
+    private var screen: some View {
         VStack(spacing: 0) {
             HeaderView(
                 title: headerTitle,
@@ -153,7 +164,8 @@ struct PlannerScreen: View {
                     onShiftDays: shiftDays,
                     scroll: gridScroll,
                     onAutoScrollTick: refreshDropTarget,
-                    scrollToNowRequest: scrollToNowRequest
+                    scrollToNowRequest: scrollToNowRequest,
+                    onDragCancelled: dragCancelled
                 )
             case .month:
                 MonthView(
@@ -173,9 +185,9 @@ struct PlannerScreen: View {
                     }
                 )
             case .matrix:
-                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 })
+                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled)
             case .weekList:
-                WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 })
+                WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled)
             }
 
             BacklogDrawerView(
@@ -190,11 +202,11 @@ struct PlannerScreen: View {
                 onDragEnded: dragEnded,
                 onEdit: { editingTask = $0 },
                 onDelete: deleteTask,
-                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - 8) : .infinity
+                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - (mode == .day ? 64 : 0) - 24) : .infinity,
+                onDragCancelled: dragCancelled
             )
         }
         .coordinateSpace(name: "planner")
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { rootSize = $0 }
         .onPreferenceChange(ZoneFramesKey.self) { zones = $0 }
         .onChange(of: zones) { _, _ in refreshDropTarget() }
         .background(Tokens.background.ignoresSafeArea())
@@ -208,7 +220,9 @@ struct PlannerScreen: View {
                 onToggle: toggleDone,
                 onFitToday: { fitOverdue(dayOffset: 0) },
                 onFitTomorrow: { fitOverdue(dayOffset: 1) },
-                onToBacklog: overdueToBacklog
+                onToBacklog: overdueToBacklog,
+                onDelete: deleteTask,
+                onChanged: { NotificationScheduler.sync(tasks) }
             )
         }
         .task {
@@ -239,11 +253,7 @@ struct PlannerScreen: View {
         .sheet(item: $editingTask) { task in
             TaskEditSheet(
                 task: task,
-                onDelete: {
-                    if selectedID == task.id { selectedID = nil }
-                    context.delete(task)
-                    NotificationScheduler.sync(tasks)
-                },
+                onDelete: { deleteTask(task) },
                 onChanged: { NotificationScheduler.sync(tasks) }
             )
         }
@@ -296,18 +306,30 @@ struct PlannerScreen: View {
     @ViewBuilder
     private var toastView: some View {
         if let toast = toast {
-            Text(toast)
-                .font(.system(size: 14))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Tokens.badge, in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
-                .shadow(color: Color.black.opacity(0.4), radius: 12, y: 8)
-                .padding(.horizontal, 16)
-                .padding(.bottom, (zones["drawer"].map { rootSize.height - $0.minY } ?? Tokens.drawerCollapsed) + 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .allowsHitTesting(false)
+            HStack(spacing: 12) {
+                Text(toast.message)
+                    .font(.system(size: 14))
+                    .multilineTextAlignment(.leading)
+                if let title = toast.actionTitle {
+                    Button(title) {
+                        toastAction?()
+                        toastTask?.cancel()
+                        self.toast = nil
+                    }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Tokens.accent)
+                    .frame(minHeight: Tokens.hitTarget)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, toast.actionTitle == nil ? 10 : 2)
+            .background(Tokens.badge, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.4), radius: 12, y: 8)
+            .padding(.horizontal, 16)
+            .padding(.bottom, (zones["drawer"].map { rootSize.height - $0.minY } ?? Tokens.drawerCollapsed) + 12)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .allowsHitTesting(toast.actionTitle != nil)
         }
     }
 
@@ -395,6 +417,13 @@ struct PlannerScreen: View {
         updateSpring(for: target)
     }
 
+    /// Система отменила жест: просто убрать призрак, ничего не переносить.
+    private func dragCancelled() {
+        drag = nil
+        springTask?.cancel()
+        springOffset = nil
+    }
+
     private func dragEnded() {
         guard let state = drag else { return }
         drag = nil
@@ -473,8 +502,12 @@ struct PlannerScreen: View {
     private func toggleDone(_ task: PlannerTask) {
         task.isDone.toggle()
         task.completedAt = task.isDone ? Date() : nil
-        if task.isDone, task.isInBacklog {
-            showToast("Готово: «\(task.title)»")
+        if task.isDone {
+            // Промахнулся — «Отменить» в тосте возвращает задачу в работу.
+            showToast("Готово: «\(task.title)»", actionTitle: "Отменить", duration: 4.5) {
+                task.isDone = false
+                task.completedAt = nil
+            }
         }
         NotificationScheduler.sync(tasks)
     }
@@ -651,16 +684,25 @@ struct PlannerScreen: View {
         return project
     }
 
-    private func showToast(_ message: String) {
+    private func showToast(_ message: String, actionTitle: String? = nil, duration: Double = 2.8, action: (() -> Void)? = nil) {
         toastTask?.cancel()
-        toast = message
+        toast = ToastMessage(message: message, actionTitle: actionTitle)
+        toastAction = action
         toastTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.8))
+            try? await Task.sleep(for: .seconds(duration))
             if !Task.isCancelled {
                 toast = nil
+                toastAction = nil
             }
         }
     }
+}
+
+/// Сообщение внизу экрана; с `actionTitle` — кнопка (например, «Отменить»).
+struct ToastMessage: Equatable {
+    let id = UUID()
+    let message: String
+    let actionTitle: String?
 }
 
 extension String {
