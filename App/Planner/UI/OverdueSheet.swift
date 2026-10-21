@@ -21,10 +21,7 @@ struct OverdueSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Capsule()
-                .fill(Color(hex: 0x3A3B41))
-                .frame(width: 38, height: 5)
-                .padding(.top, 8)
+            Color.clear.frame(height: 10)
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Text("Просрочено")
@@ -50,19 +47,9 @@ struct OverdueSheet: View {
                         .contentShape(Rectangle())
                 }
                 .disabled(tasks.isEmpty)
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Готово")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Tokens.accent)
-                        .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Закрыть")
             }
             .padding(.leading, 18)
-            .padding(.trailing, 8)
+            .padding(.trailing, 14)
             .padding(.top, 8)
             .padding(.bottom, 10)
 
@@ -153,7 +140,7 @@ struct OverdueSheet: View {
         .foregroundStyle(Tokens.text)
         .background(Tokens.panel)
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationBackground(Tokens.panel)
         .sheet(item: $editing) { task in
             TaskEditSheet(task: task, onDelete: { onDelete(task) }, onChanged: onChanged)

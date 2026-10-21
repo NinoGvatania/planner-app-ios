@@ -14,10 +14,24 @@ public enum SpeechCleanup {
     /// Вводные обороты в начале: «мне нужно позвонить» → «позвонить».
     public static let leadIns: [String] = [
         "мне нужно будет", "мне надо будет", "мне нужно", "мне надо", "нужно будет", "надо будет",
-        "нужно", "надо", "я хочу", "хочу", "я должен", "я должна", "должен", "должна", "не забыть",
-        "не забудь", "напомни мне", "напомни", "давай", "давайте", "ещё", "еще", "потом", "затем",
-        "также", "а также", "и", "а", "задача", "следующая задача", "новая задача",
+        "нужно", "надо", "надо бы", "нужно бы", "я хочу", "хочу", "я должен", "я должна", "должен", "должна",
+        "не забыть", "не забыть бы", "не забудь", "напомни мне", "напомни", "давай", "давайте", "ещё", "еще",
+        "потом", "затем", "также", "а также", "и", "а", "задача", "следующая задача", "новая задача",
+        "я планирую", "планирую", "я собираюсь", "собираюсь", "мне бы", "было бы", "неплохо бы", "в общем",
     ]
+
+    /// Хвосты, которые остаются от связок: «… и», «… а», «… потом», «… чтобы».
+    public static let trailingJunk: [String] = ["и", "а", "потом", "затем", "ну", "вот", "как бы", "чтобы", "чтоб", "это"]
+
+    /// Подчистить готовое название: убрать хвосты-связки, двойные пробелы, точку в конце, заглавная буква.
+    public static func tidyTitle(_ title: String) -> String {
+        var words = title.split(separator: " ").map(String.init)
+        while let last = words.last, trailingJunk.contains(last.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ",.;:!?"))) {
+            words.removeLast()
+        }
+        let joined = words.joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:!?-–—"))
+        return capitalized(joined.isEmpty ? title : joined)
+    }
 
     public static func clean(_ text: String) -> String {
         var result = " " + text.replacingOccurrences(of: "[\\s]+", with: " ", options: .regularExpression) + " "

@@ -16,6 +16,12 @@ final class SpeechCleanupTests: XCTestCase {
         XCTAssertEqual(SpeechCleanup.clean("записаться к стоматологу"), "Записаться к стоматологу")
     }
 
+    func testTidyTitle() {
+        XCTAssertEqual(SpeechCleanup.tidyTitle("позвонить маме и"), "Позвонить маме")
+        XCTAssertEqual(SpeechCleanup.tidyTitle("купить хлеб потом."), "Купить хлеб")
+        XCTAssertEqual(SpeechCleanup.tidyTitle("и"), "И")
+    }
+
     func testMeaningful() {
         XCTAssertFalse(SpeechCleanup.isMeaningful("у"))
         XCTAssertFalse(SpeechCleanup.isMeaningful("в "))

@@ -2,8 +2,9 @@ import PlannerCore
 import SwiftUI
 
 /// Панель бэклога снизу. Три положения: свёрнута (заголовок, две верхние задачи «торчат», строка ввода),
-/// открыта (до 6 строк) и на весь экран. Тап по заголовку переключает, свайп тянет за пальцем и отпускает
-/// к ближайшему положению. Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
+/// открыта (до 6 строк) и на весь экран. Свёрнутую открывает тап по любому месту панели, открытую
+/// сворачивает тап по заголовку; свайп тянет за пальцем и отпускает к ближайшему положению.
+/// Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
 /// Жест удержания висит на контейнере списка, а не на строках: строка List может быть уничтожена,
 /// когда панель сворачивается в начале переноса, и жест вместе с ней.
 struct BacklogDrawerView: View {
@@ -21,9 +22,6 @@ struct BacklogDrawerView: View {
     /// Сколько высоты экрана панель может занять (с клавиатурой — меньше).
     var maxHeight: CGFloat = .infinity
     var onDragCancelled: (() -> Void)? = nil
-    /// Серия дней подряд (огонёк в заголовке) и что делать по тапу на неё.
-    var streak: Int = 0
-    var onStreak: (() -> Void)? = nil
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
@@ -66,6 +64,14 @@ struct BacklogDrawerView: View {
                 .frame(height: max(0, height - Tokens.drawerCollapsed), alignment: .top)
                 .clipped()
                 .contentShape(Rectangle())
+                .overlay {
+                    // Свёрнутая панель: тап по торчащим задачам открывает её, а не редактор задачи.
+                    if !isOpen {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { open() }
+                    }
+                }
                 .onPreferenceChange(BacklogRowFramesKey.self) { rowFrames = $0 }
                 .gesture(
                     HoldDragGesture(
@@ -94,8 +100,13 @@ struct BacklogDrawerView: View {
         .frame(height: height)
         .reportZone("drawer")
         .background {
+            // Жидкое стекло: панель слегка просвечивает сетку под собой.
             UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
-                .fill(drag?.target == .backlog ? Color(hex: 0x1B2A24) : Tokens.drawer)
+                .fill(Color.clear)
+                .glassEffect(
+                    .regular.tint(drag?.target == .backlog ? Color(hex: 0x1B2A24) : Tokens.drawer.opacity(0.78)),
+                    in: UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
+                )
                 .shadow(color: Color.black.opacity(0.45), radius: 15, y: -10)
                 .ignoresSafeArea(edges: .bottom)
         }
@@ -119,67 +130,25 @@ struct BacklogDrawerView: View {
                 .frame(width: 38, height: 5)
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text("Бэклог")
-                            .font(.system(size: 17, weight: .bold))
-                        Text("\(openCount)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(hex: 0xC9C9D1))
-                            .frame(minWidth: 22, minHeight: 22)
-                            .padding(.horizontal, 3)
-                            .background(Tokens.badge, in: Capsule())
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Бэклог, \(openCount) " + DayMath.plural(openCount, "задача", "задачи", "задач"))
-                    .accessibilityHint(isOpen ? "Свернуть" : "Открыть")
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityAction { toggle() }
-                    if let onStreak {
-                        Button(action: onStreak) {
-                            HStack(spacing: 3) {
-                                Image(systemName: streak > 0 ? "flame.fill" : "flame")
-                                    .font(.system(size: 13, weight: .bold))
-                                Text("\(streak)")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .monospacedDigit()
-                            }
-                            .foregroundStyle(streak > 0 ? Color(hex: 0xFF9F43) : Tokens.muted)
-                            .padding(.horizontal, 8)
-                            .frame(height: 26)
-                            .background(Tokens.badge, in: Capsule())
-                            .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Серия: \(streak) дней подряд")
-                    }
+                    Text("Бэклог")
+                        .font(.system(size: 17, weight: .bold))
+                    Text("\(openCount)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xC9C9D1))
+                        .frame(minWidth: 22, minHeight: 22)
+                        .padding(.horizontal, 3)
+                        .background(Tokens.badge, in: Capsule())
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Бэклог, \(openCount) " + DayMath.plural(openCount, "задача", "задачи", "задач"))
+                .accessibilityHint(isOpen ? "Свернуть" : "Открыть")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { toggle() }
                 Spacer()
                 if let hint = hint {
                     Text(hint)
                         .font(.system(size: 13))
                         .foregroundStyle(Tokens.accent)
-                } else if isOpen {
-                    Button {
-                        withAnimation(.spring(duration: 0.3)) {
-                            isFull = false
-                            isOpen = false
-                        }
-                    } label: {
-                        Text("Готово")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Tokens.accent)
-                            .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("Свернуть бэклог")
-                } else {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Tokens.caption)
-                        .rotationEffect(.degrees(isOpen ? 180 : 0))
-                        .frame(width: 30, height: 30)
-                        .background(Tokens.badge, in: Circle())
                 }
             }
         }
@@ -203,7 +172,13 @@ struct BacklogDrawerView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// Тап: свёрнута → открыта, открыта → свёрнута, на весь экран → открыта.
+    /// Тап по свёрнутой панели — открыть.
+    private func open() {
+        guard !isOpen else { return }
+        withAnimation(.spring(duration: 0.3)) { isOpen = true }
+    }
+
+    /// Тап по заголовку: свёрнута → открыта, открыта → свёрнута, на весь экран → открыта.
     private func toggle() {
         withAnimation(.spring(duration: 0.3)) {
             if isFull && canExpand {

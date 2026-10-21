@@ -10,7 +10,9 @@ struct PlannerScreen: View {
     @Query(sort: \PlannerTask.createdAt) private var tasks: [PlannerTask]
 
     @State private var dayOffset = 0
-    @State private var mode: ViewMode = .day
+    /// Период (день / неделя / месяц / год) и как его показывать (календарь / список / матрица / …).
+    @State private var period: Period = .day
+    @State private var display: Display = .calendar
     @State private var showDone = true
     @State private var drawerOpen = false
     @State private var showOverdue = false
@@ -35,11 +37,6 @@ struct PlannerScreen: View {
     @State private var showStreak = false
     /// Задачи, отмеченные сделанными прямо в листе «Просрочено»: остаются в нём, чтобы можно было вернуть.
     @State private var recentlyDoneOverdue: Set<UUID> = []
-    /// Откуда пришли в текущий вид (месяц → день, неделя → день): кнопка «назад» ведёт обратно.
-    @State private var navStack: [ViewMode] = []
-    /// Горизонтальный сдвиг сетки дня при свайпе между днями.
-    @State private var pageX: CGFloat = 0
-    @State private var swipeAxis: Axis?
     @AppStorage("colorMode") private var colorModeRaw = ColorMode.quadrant.rawValue
 
     private let gridTopInset: CGFloat = 10
@@ -64,58 +61,99 @@ struct PlannerScreen: View {
     }
     /// Понедельник недели выбранного дня.
     private var weekStart: Int { DayMath.weekStartOffset(containing: dayOffset) }
-    /// Дни, показанные на сетке: один в режиме «День», неделя с понедельника в режиме «Неделя».
+    /// Понедельник текущей недели — точка отсчёта страниц недель.
+    private var baseMonday: Int { DayMath.weekStartOffset(containing: 0) }
+    /// Сетка дня показана (день + календарь): полоска недели, пружина на вкладках, прокрутка к «сейчас».
+    private var isDayGrid: Bool { period == .day && display == .calendar }
+    /// Дни, показанные на сетке: один в «Дне», неделя с понедельника в «Неделе».
     private var visibleDays: [Int] {
-        mode == .week ? Array(weekStart...(weekStart + 6)) : [dayOffset]
-    }
-    /// Заголовок кнопки «назад»: название вида, из которого открыли текущий.
-    private var backTitle: String? {
-        guard let parent = navStack.last else { return nil }
-        return parent == .month ? DayMath.monthNominative[DayMath.monthIndex(monthAnchor)] : parent.title
+        period == .week && display == .calendar ? Array(weekStart...(weekStart + 6)) : [dayOffset]
     }
     private var monthAnchor: Date { DayMath.day(offset: dayOffset) }
 
+    /// Номер страницы текущего периода (0 — период с сегодняшним днём).
+    private var currentPeriodIndex: Int {
+        switch period {
+        case .day: return dayOffset
+        case .week: return (weekStart - baseMonday) / 7
+        case .month: return DayMath.monthDelta(from: today, to: monthAnchor)
+        case .year: return DayMath.year(monthAnchor) - DayMath.year(today)
+        }
+    }
+
+    private var periodIndex: Binding<Int> {
+        Binding(get: { currentPeriodIndex }, set: { setPeriodIndex($0) })
+    }
+
+    /// Перелистнули период: день переезжает на ту же позицию соседнего периода.
+    private func setPeriodIndex(_ index: Int) {
+        let delta = index - currentPeriodIndex
+        guard delta != 0 else { return }
+        switch period {
+        case .day: dayOffset = clampDay(dayOffset + delta)
+        case .week: dayOffset = clampDay(dayOffset + delta * 7)
+        case .month: dayOffset = clampDay(DayMath.offset(of: DayMath.date(monthAnchor, addingMonths: delta)))
+        case .year: dayOffset = clampDay(DayMath.offset(of: DayMath.date(monthAnchor, addingYears: delta)))
+        }
+    }
+
+    private func clampDay(_ value: Int) -> Int { max(-3650, min(3650, value)) }
+
+    /// Границы периода страницы `index`: [start, end).
+    private func pageRange(index: Int) -> (start: Date, end: Date) {
+        switch period {
+        case .day:
+            return (DayMath.day(offset: index), DayMath.day(offset: index + 1))
+        case .week:
+            let first = baseMonday + index * 7
+            return (DayMath.day(offset: first), DayMath.day(offset: first + 7))
+        case .month:
+            let start = DayMath.date(DayMath.monthStart(of: today), addingMonths: index)
+            return (start, DayMath.date(start, addingMonths: 1))
+        case .year:
+            let start = DayMath.date(DayMath.yearStart(of: today), addingYears: index)
+            return (start, DayMath.date(start, addingYears: 1))
+        }
+    }
+
+    private var currentRange: (start: Date, end: Date) { pageRange(index: currentPeriodIndex) }
+
+    private func filtered(_ source: [PlannerTask], in range: (start: Date, end: Date), includingBacklog: Bool = false) -> [PlannerTask] {
+        source.filter { task in
+            guard let day = task.day else { return includingBacklog }
+            return day >= range.start && day < range.end
+        }
+    }
+
     private var headerTitle: String {
-        switch mode {
-        case .day: return DayMath.title(offset: dayOffset)
-        case .week: return rangeTitle(from: weekStart, to: weekStart + 6)
-        case .weekList: return rangeTitle(from: 0, to: 6)
-        case .month: return DayMath.monthNominative[DayMath.monthIndex(monthAnchor)] + " \(DayMath.year(monthAnchor))"
-        case .matrix: return "Матрица"
-        case .projects: return "Проекты"
-        case .dashboard: return "Дашборд"
+        let range = currentRange
+        switch period {
+        case .day:
+            return "\(DayMath.dayOfMonth(range.start)) \(DayMath.monthGenitive[DayMath.monthIndex(range.start)])"
+        case .week:
+            return rangeTitle(from: weekStart, to: weekStart + 6)
+        case .month:
+            return DayMath.monthNominative[DayMath.monthIndex(range.start)] + " \(DayMath.year(range.start))"
+        case .year:
+            return "\(DayMath.year(range.start))"
         }
     }
 
     private var headerSubtitle: String {
-        switch mode {
-        case .day: return DayMath.subtitle(offset: dayOffset)
-        case .week:
-            let n = countTasks(from: weekStart, to: weekStart + 6)
-            return "Неделя · \(n) " + DayMath.plural(n, "задача", "задачи", "задач")
-        case .weekList: return "Неделя списком"
-        case .month:
-            let start = DayMath.offset(of: DayMath.monthStart(of: monthAnchor))
-            let end = DayMath.offset(of: DayMath.date(DayMath.monthStart(of: monthAnchor), addingMonths: 1)) - 1
-            let n = countTasks(from: start, to: end)
-            return "\(n) " + DayMath.plural(n, "задача", "задачи", "задач") + " в месяце"
-        case .matrix:
-            let n = tasks.filter { !$0.isDone && !$0.isRoutine }.count
-            return "\(n) " + DayMath.plural(n, "открытая задача", "открытые задачи", "открытых задач")
-        case .projects:
-            let n = tasks.filter { !$0.isDone && !$0.isRoutine && $0.project != nil }.count
-            return "\(n) " + DayMath.plural(n, "задача", "задачи", "задач") + " в проектах"
-        case .dashboard:
-            return "Время по проектам"
+        let n = filtered(visibleTasks, in: currentRange).count
+        let count = "\(n) " + DayMath.plural(n, "задача", "задачи", "задач")
+        let scope: String
+        switch period {
+        case .day:
+            let relative = dayOffset == 0 ? "сегодня" : (dayOffset == 1 ? "завтра" : (dayOffset == -1 ? "вчера" : ""))
+            let weekday = DayMath.weekdayFull[DayMath.weekdayIndex(monthAnchor)].capitalizedFirst
+            scope = relative.isEmpty ? weekday : weekday + ", " + relative
+        case .week: scope = "Неделя"
+        case .month: scope = "Месяц"
+        case .year: scope = "Год"
         }
-    }
-
-    private func countTasks(from first: Int, to last: Int) -> Int {
-        let a = DayMath.day(offset: first), b = DayMath.day(offset: last)
-        return visibleTasks.filter { task in
-            guard let day = task.day else { return false }
-            return day >= a && day <= b
-        }.count
+        let modeNote = display == .calendar ? "" : " · " + display.title.lowercased()
+        return scope + " · " + count + modeNote
     }
 
     /// «20–22 окт» или «30 окт – 1 ноя».
@@ -147,100 +185,46 @@ struct PlannerScreen: View {
                 title: headerTitle,
                 subtitle: headerSubtitle,
                 overdueCount: overdueTasks.count,
+                streak: streakInfo.current,
                 todayNumber: DayMath.dayOfMonth(today),
-                mode: Binding(
-                    get: { mode },
-                    set: { value in
-                        navStack = []
-                        withAnimation(.easeOut(duration: 0.2)) { mode = value }
-                    }
+                period: Binding(
+                    get: { period },
+                    set: { value in withAnimation(.easeOut(duration: 0.2)) { period = value } }
+                ),
+                display: Binding(
+                    get: { display },
+                    set: { value in withAnimation(.easeOut(duration: 0.2)) { display = value } }
                 ),
                 showDone: $showDone,
                 colorMode: Binding(
                     get: { ColorMode(rawValue: colorModeRaw) ?? .quadrant },
                     set: { colorModeRaw = $0.rawValue }
                 ),
-                backTitle: backTitle,
-                onBack: goBack,
                 onOverdue: { showOverdue = true },
+                onStreak: { showStreak = true },
                 onToday: {
-                    withAnimation {
-                        dayOffset = 0
-                        if mode == .matrix || mode == .weekList || mode == .projects || mode == .dashboard {
-                            mode = .day
-                            navStack = []
-                        }
-                    }
+                    withAnimation { dayOffset = 0 }
                     scrollToNowRequest += 1
                 },
                 onProjects: { showProjects = true },
                 onSettings: { showSettings = true }
             )
 
-            switch mode {
-            case .day, .week:
-                if mode == .day {
-                    WeekStripView(dayOffset: $dayOffset, start: weekStart, hasTasks: { offset in
-                        let date = DayMath.day(offset: offset)
-                        return visibleTasks.contains { $0.day == date }
-                    }, hoveredOffset: hoveredTab, onShiftWeek: { direction in
-                        // Полоска уже уехала за пальцем: день меняем сразу, сетка въезжает сбоку.
-                        switchDays(by: 7 * direction, slideFrom: direction)
-                    })
-                }
-                DayTimelineView(
-                    days: visibleDays,
-                    tasks: visibleTasks,
-                    selectedID: $selectedID,
-                    drag: drag,
-                    onToggle: toggleDone,
-                    onResize: resize,
-                    onRetime: retime,
-                    onDragChanged: dragChanged,
-                    onDragEnded: dragEnded,
-                    onCreate: createTask,
-                    onEdit: { editingTask = $0 },
-                    onShiftDays: shiftDays,
-                    onSelectDay: { offset in
-                        navStack = [.week]
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            dayOffset = offset
-                            mode = .day
-                        }
-                    },
-                    scroll: gridScroll,
-                    onAutoScrollTick: refreshDropTarget,
-                    scrollToNowRequest: scrollToNowRequest,
-                    onDragCancelled: dragCancelled
-                )
-                .offset(x: mode == .day ? pageX : 0)
-                .clipped()
-                .simultaneousGesture(daySwipe, including: mode == .day ? .all : .subviews)
-            case .month:
-                MonthView(
-                    anchor: monthAnchor,
-                    tasks: visibleTasks,
-                    drag: drag,
-                    onSelectDay: { offset in
-                        navStack = [.month]
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            dayOffset = offset
-                            mode = .day
-                        }
-                    },
-                    onShiftMonth: { delta in
-                        // Страница уже уехала за пальцем — подменяем месяц без анимации.
-                        dayOffset = DayMath.offset(of: DayMath.date(monthAnchor, addingMonths: delta))
-                    }
-                )
-            case .matrix:
-                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled)
-            case .weekList:
-                WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled)
-            case .projects:
-                ProjectsView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onManageProjects: { showProjects = true }, onDragCancelled: dragCancelled)
-            case .dashboard:
-                DashboardView(tasks: tasks, onOpenProjects: { showProjects = true })
+            if isDayGrid {
+                WeekStripView(dayOffset: $dayOffset, hasTasks: { offset in
+                    let date = DayMath.day(offset: offset)
+                    return visibleTasks.contains { $0.day == date }
+                }, hoveredOffset: hoveredTab, blocked: { drag != nil })
+            }
+
+            // Все виды листаются одинаково: соседние периоды отрисованы рядом, страница едет за пальцем.
+            PagerView(
+                index: periodIndex,
+                blocked: { drag != nil || gridScroll.interacting },
+                cancelWhen: drag != nil,
+                hintKey: display == .calendar && period == .month ? "month" : nil
+            ) { index, live, tick in
+                page(index: index, live: live, tick: tick)
             }
 
             BacklogDrawerView(
@@ -255,10 +239,8 @@ struct PlannerScreen: View {
                 onDragEnded: dragEnded,
                 onEdit: { editingTask = $0 },
                 onDelete: deleteTask,
-                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - (mode == .day ? 64 : 0) - 24) : .infinity,
-                onDragCancelled: dragCancelled,
-                streak: streakInfo.current,
-                onStreak: { showStreak = true }
+                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - (isDayGrid ? 64 : 0) - 24) : .infinity,
+                onDragCancelled: dragCancelled
             )
         }
         .coordinateSpace(name: "planner")
@@ -288,24 +270,13 @@ struct PlannerScreen: View {
             NotificationScheduler.sync(tasks + created)
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else {
-                // Ушли в фон посреди свайпа: системного конца жеста может не быть — сбросить вручную.
-                swipeAxis = nil
-                pageX = 0
-                return
-            }
             // Вернулись в приложение (возможно, уже другой день): досоздать рутины, обновить напоминания.
+            guard phase == .active else { return }
             let created = RoutineManager.materialize(in: context)
             NotificationScheduler.sync(tasks + created)
         }
-        .onChange(of: mode) { _, _ in
-            selectedID = nil
-            drag = nil
-            springTask?.cancel()
-            springOffset = nil
-            pageX = 0
-            swipeAxis = nil
-        }
+        .onChange(of: period) { _, _ in resetInteraction() }
+        .onChange(of: display) { _, _ in resetInteraction() }
         .fullScreenCover(isPresented: $showVoice) {
             VoiceInputSheet(onDone: addDrafts)
         }
@@ -334,76 +305,117 @@ struct PlannerScreen: View {
         }
     }
 
-    /// Свайп по заголовкам недели: окно сдвигается на неделю.
-    private func shiftDays(by delta: Int) {
-        withAnimation(.easeOut(duration: 0.2)) {
-            dayOffset = max(-365, min(365, dayOffset + delta))
-        }
+    /// Сменили период или режим: выделение и перенос сбрасываются.
+    private func resetInteraction() {
+        selectedID = nil
+        drag = nil
+        springTask?.cancel()
+        springOffset = nil
     }
 
-    /// Кнопка «назад»: вернуться в вид, из которого открыли текущий.
-    private func goBack() {
-        guard let parent = navStack.popLast() else { return }
-        withAnimation(.easeOut(duration: 0.2)) { mode = parent }
-    }
+    // MARK: - Страницы
 
-    /// Свайп по сетке дня: влево — следующий день, вправо — прошлый. Сетка едет за пальцем;
-    /// пока задачу держат, свайп не работает, а вертикальная прокрутка остаётся прокруткой.
-    private var daySwipe: some Gesture {
-        DragGesture(minimumDistance: 14, coordinateSpace: .named("planner"))
-            .onChanged { value in
-                if swipeAxis == nil {
-                    let free = drag == nil && !gridScroll.interacting
-                    swipeAxis = free && abs(value.translation.width) > abs(value.translation.height) * 1.4 ? .horizontal : .vertical
+    /// Содержимое страницы `index` текущего периода в текущем режиме. `live` — средняя страница пейджера.
+    @ViewBuilder
+    private func page(index: Int, live: Bool, tick: Int) -> some View {
+        let range = pageRange(index: index)
+        switch display {
+        case .calendar:
+            switch period {
+            case .day:
+                timeline(days: [index], live: live, tick: tick)
+            case .week:
+                let first = baseMonday + index * 7
+                timeline(days: Array(first...(first + 6)), live: live, tick: tick)
+            case .month:
+                MonthView(
+                    anchor: range.start,
+                    tasks: visibleTasks,
+                    drag: drag,
+                    live: live,
+                    onSelectDay: { offset in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            dayOffset = offset
+                            period = .day
+                        }
+                    },
+                    onEdit: { editingTask = $0 },
+                    onCreate: createAllDayTask,
+                    onDragChanged: dragChanged,
+                    onDragEnded: dragEnded,
+                    onDragCancelled: dragCancelled
+                )
+            case .year:
+                YearView(year: DayMath.year(range.start), tasks: visibleTasks) { start in
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        dayOffset = DayMath.offset(of: start)
+                        period = .month
+                    }
                 }
-                guard swipeAxis == .horizontal, drag == nil, !gridScroll.interacting else { return }
-                pageX = value.translation.width
             }
-            .onEnded { value in
-                let horizontal = swipeAxis == .horizontal
-                swipeAxis = nil
-                guard horizontal else { return }
-                let width = rootSize.width
-                guard drag == nil, width > 0 else {
-                    withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
-                    return
-                }
-                if abs(value.translation.width) > width * 0.22 || abs(value.predictedEndTranslation.width) > width * 0.5 {
-                    let direction = value.translation.width < 0 ? 1 : -1
-                    slideDays(by: direction, direction: direction)
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
-                }
-            }
-    }
-
-    /// Уехать в сторону `direction`, подменить день на `delta` и въехать с другой стороны.
-    private func slideDays(by delta: Int, direction: Int) {
-        let width = rootSize.width
-        guard width > 0 else {
-            shiftDays(by: delta)
-            return
-        }
-        withAnimation(.easeOut(duration: 0.16)) {
-            pageX = -CGFloat(direction) * width
-        } completion: {
-            switchDays(by: delta, slideFrom: direction)
+        case .list:
+            PeriodListView(
+                tasks: visibleTasks, range: range, period: period, drag: drag, live: live,
+                onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
+                onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled
+            )
+        case .matrix:
+            MatrixView(
+                tasks: filtered(tasks, in: range, includingBacklog: true), drag: drag,
+                onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
+                onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled, live: live
+            )
+        case .projects:
+            ProjectsView(
+                tasks: filtered(visibleTasks, in: range, includingBacklog: true), drag: drag,
+                onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
+                onEdit: { editingTask = $0 }, onManageProjects: { showProjects = true },
+                onDragCancelled: dragCancelled, live: live
+            )
+        case .chart:
+            DashboardView(tasks: filtered(tasks, in: range), onOpenProjects: { showProjects = true })
         }
     }
 
-    /// Подменить день сразу (без анимации) и въехать сеткой со стороны `direction`.
-    private func switchDays(by delta: Int, slideFrom direction: Int) {
-        let width = rootSize.width
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            dayOffset = max(-365, min(365, dayOffset + delta))
-            pageX = width > 0 ? CGFloat(direction) * width : 0
-        }
-        guard width > 0 else { return }
-        Task { @MainActor in
-            withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
-        }
+    private func timeline(days: [Int], live: Bool, tick: Int) -> some View {
+        DayTimelineView(
+            days: days,
+            tasks: visibleTasks,
+            selectedID: $selectedID,
+            drag: drag,
+            onToggle: toggleDone,
+            onResize: resize,
+            onRetime: retime,
+            onDragChanged: dragChanged,
+            onDragEnded: dragEnded,
+            onCreate: createTask,
+            onEdit: { editingTask = $0 },
+            onSelectDay: { offset in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    dayOffset = offset
+                    period = .day
+                }
+            },
+            scroll: gridScroll,
+            onAutoScrollTick: refreshDropTarget,
+            scrollToNowRequest: scrollToNowRequest,
+            onDragCancelled: dragCancelled,
+            live: live,
+            syncTick: tick
+        )
+    }
+
+    /// Удержание на дне в месяце: задача на весь день, название спрашивается следом.
+    private func createAllDayTask(day: Int) {
+        let task = PlannerTask(
+            title: "Новая задача",
+            day: DayMath.day(offset: day),
+            start: nil,
+            backlogRank: (tasks.map { $0.backlogRank }.max() ?? 0) + 1
+        )
+        context.insert(task)
+        newTitle = ""
+        namingTask = task
     }
 
     /// Тап или протягивание по свободному месту сетки: задача создаётся сразу, название спрашивается следом.
@@ -482,7 +494,7 @@ struct PlannerScreen: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .frame(width: 210, alignment: .leading)
-            .background(Tokens.badge, in: RoundedRectangle(cornerRadius: 14))
+            .glassEffect(.regular.tint(Tokens.badge.opacity(0.8)), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(drag.target == nil ? Color(hex: 0x4A4B52) : Tokens.accent, lineWidth: 1.5))
             .shadow(color: Color.black.opacity(0.55), radius: 17, y: 16)
             .rotationEffect(.degrees(-2))
@@ -506,7 +518,7 @@ struct PlannerScreen: View {
         case .allDay(let day):
             return DayMath.label(offset: day).capitalizedFirst + " · весь день"
         case .dayTab(let offset):
-            return mode == .day && !visibleDays.contains(offset)
+            return isDayGrid && !visibleDays.contains(offset)
                 ? "Подержи — открою " + DayMath.label(offset: offset)
                 : "На " + DayMath.label(offset: offset)
         case .backlog:
@@ -557,8 +569,6 @@ struct PlannerScreen: View {
         drag = nil
         springTask?.cancel()
         springOffset = nil
-        swipeAxis = nil
-        if pageX != 0 { withAnimation(.easeOut(duration: 0.2)) { pageX = 0 } }
     }
 
     private func dragEnded() {
@@ -626,7 +636,7 @@ struct PlannerScreen: View {
 
     /// Задержка над вкладкой дня ~0,4 с открывает этот день.
     private func updateSpring(for target: DropTarget?) {
-        guard mode == .day, case .dayTab(let offset) = target, offset != dayOffset else {
+        guard isDayGrid, case .dayTab(let offset) = target, offset != dayOffset else {
             springTask?.cancel()
             springOffset = nil
             return
@@ -724,7 +734,8 @@ struct PlannerScreen: View {
             }
         }
         showOverdue = false
-        mode = .day
+        period = .day
+        display = .calendar
         dayOffset = target
         selectedID = nil
         let times = placed.sorted().map { ClockGrid.format(minutes: $0) }.joined(separator: ", ")
@@ -787,7 +798,7 @@ struct PlannerScreen: View {
             backlogRank: rank
         )
         context.insert(task)
-        if let offset = parsed.dayOffset, mode == .day, (0...6).contains(offset) {
+        if let offset = parsed.dayOffset, isDayGrid, (0...6).contains(offset) {
             dayOffset = offset
         }
         if parsed.start != nil { selectedID = task.id }

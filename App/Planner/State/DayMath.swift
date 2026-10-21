@@ -46,6 +46,26 @@ enum DayMath {
         calendar.date(byAdding: .month, value: months, to: date) ?? date
     }
 
+    /// Год со смещением от года данного дня.
+    static func date(_ date: Date, addingYears years: Int) -> Date {
+        calendar.date(byAdding: .year, value: years, to: date) ?? date
+    }
+
+    /// Первое января года, в который входит день.
+    static func yearStart(of date: Date) -> Date {
+        calendar.date(from: calendar.dateComponents([.year], from: date)) ?? date
+    }
+
+    /// Первое число месяца `month` (0 — январь) года `year`.
+    static func monthStart(year: Int, month: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month + 1, day: 1)) ?? today()
+    }
+
+    /// На сколько месяцев `to` позже `from` (отрицательно — раньше).
+    static func monthDelta(from: Date, to: Date) -> Int {
+        (year(to) * 12 + monthIndex(to)) - (year(from) * 12 + monthIndex(from))
+    }
+
     static let monthNominative = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 
     static func year(_ date: Date) -> Int {

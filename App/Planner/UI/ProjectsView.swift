@@ -13,6 +13,8 @@ struct ProjectsView: View {
     let onEdit: (PlannerTask) -> Void
     let onManageProjects: () -> Void
     var onDragCancelled: (() -> Void)? = nil
+    /// Средняя страница пейджера: только она сообщает зоны сброса.
+    var live = true
 
     @Query(sort: \Project.name) private var projects: [Project]
     @State private var collapsed: Set<String> = []
@@ -242,10 +244,10 @@ struct ProjectsView: View {
         }
         .padding(6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(hovered ? Tokens.accent.opacity(0.18) : style.background, in: RoundedRectangle(cornerRadius: 16))
+        .glassEffect(.regular.tint(hovered ? Tokens.accent.opacity(0.35) : style.background.opacity(0.9)), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: hovered ? 2.5 : 1.5))
         .scaleEffect(hovered ? 1.02 : 1)
         .animation(.easeOut(duration: 0.12), value: hovered)
-        .reportZone("project-" + (name ?? ""), enabled: drag != nil)
+        .reportZone("project-" + (name ?? ""), enabled: live && drag != nil)
     }
 }

@@ -35,10 +35,12 @@ struct DayTimelineView: View {
     /// Создать задачу: (день, начало, длительность).
     let onCreate: (Int, Int, Int) -> Void
     let onEdit: (PlannerTask) -> Void
-    /// Сдвинуть окно дней (свайп по заголовкам недели).
-    var onShiftDays: ((Int) -> Void)? = nil
     /// Тап по заголовку дня в неделе — открыть этот день.
     var onSelectDay: ((Int) -> Void)? = nil
+    /// Средняя страница пейджера: только она сообщает зоны сброса и пишет общее смещение прокрутки.
+    /// Соседние страницы подравнивают свою прокрутку под общую при каждом `syncTick`.
+    var live = true
+    var syncTick = 0
     /// Смещение прокрутки сетки, общее с экраном (для зон сброса).
     let scroll: GridScroll
     /// Сетка проехала сама под неподвижным пальцем — экран пересчитывает цель сброса.
@@ -126,16 +128,17 @@ struct DayTimelineView: View {
                 }
                 .scrollPosition($scrollPosition)
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
-                    scroll.offset = offset
+                    if live { scroll.offset = offset }
                 }
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("planner")) } action: { frame in
                     viewport = frame
                     scrollToNowIfNeeded()
                 }
-                .reportZone("timeline")
+                .reportZone("timeline", enabled: live)
             }
         }
         .onChange(of: drag?.location) { _, location in
+            guard live else { return }
             if let location = location {
                 updateAutoScroll(fingerY: location.y)
             } else {
@@ -143,7 +146,12 @@ struct DayTimelineView: View {
             }
         }
         .onChange(of: scrollToNowRequest) { _, _ in
+            guard live else { return }
             withAnimation(.easeOut(duration: 0.25)) { scrollToNow() }
+        }
+        .onChange(of: syncTick) { _, _ in
+            // Начался свайп между днями: соседняя страница встаёт на ту же прокрутку, что и средняя.
+            if !live { scrollPosition.scrollTo(y: scroll.offset) }
         }
         .onDisappear { stopAutoScroll() }
     }
@@ -153,7 +161,13 @@ struct DayTimelineView: View {
     private func scrollToNowIfNeeded() {
         guard !scrolledToNow, viewport.height > 0 else { return }
         scrolledToNow = true
-        DispatchQueue.main.async { scrollToNow() }
+        if live, scroll.offset == 0 {
+            DispatchQueue.main.async { scrollToNow() }
+        } else {
+            // Соседняя страница или возврат к сетке: та же прокрутка, что у экрана.
+            let offset = scroll.offset
+            DispatchQueue.main.async { scrollPosition.scrollTo(y: offset) }
+        }
     }
 
     /// Текущий час минус один — вверху видимой области.
@@ -229,7 +243,7 @@ struct DayTimelineView: View {
                 .background(hovered ? Tokens.accent.opacity(0.22) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
                 .onTapGesture { onSelectDay?(offset) }
-                .reportZone("tab-\(offset)")
+                .reportZone("tab-\(offset)", enabled: live)
                 .accessibilityLabel(DayMath.accessibilityLabel(offset: offset))
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Открыть день")
@@ -237,13 +251,6 @@ struct DayTimelineView: View {
         }
         .padding(.trailing, 8)
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                    onShiftDays?(value.translation.width < 0 ? days.count : -days.count)
-                }
-        )
     }
 
     // MARK: - Весь день
@@ -295,7 +302,7 @@ struct DayTimelineView: View {
                 .padding(.vertical, 6)
                 .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
                 .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
-                .reportZone("allday-\(day)")
+                .reportZone("allday-\(day)", enabled: live)
             }
         }
         .padding(.trailing, 8)
@@ -369,7 +376,7 @@ struct DayTimelineView: View {
                 let left = Tokens.gutter + columnWidth * CGFloat(index)
                 columnBackground(day: day)
                     .frame(width: columnWidth, height: contentHeight)
-                    .reportZone("grid-\(day)", space: "grid")
+                    .reportZone("grid-\(day)", space: "grid", enabled: live)
                     .position(x: left + columnWidth / 2, y: contentHeight / 2)
             }
 

@@ -19,7 +19,7 @@ enum TaskExtractor {
         guard !text.isEmpty else { return ([], .rules(reason: nil)) }
         guard case .available = OnDeviceExtractor.status else { return (byRules(text), .rules(reason: nil)) }
         do {
-            let drafts = try await OnDeviceExtractor.extract(text)
+            let drafts = dedupe(try await OnDeviceExtractor.extract(text))
             guard !drafts.isEmpty else { return (byRules(text), .rules(reason: "Apple Intelligence не нашёл задач — разобрано правилами")) }
             return (drafts, .model)
         } catch {
@@ -27,16 +27,28 @@ enum TaskExtractor {
         }
     }
 
+    /// Одинаковые задачи (то же название, день и время) оставляем по одной.
+    static func dedupe(_ drafts: [DraftTask]) -> [DraftTask] {
+        var seen = Set<String>()
+        return drafts.filter { draft in
+            let key = draft.title.lowercased() + "|\(draft.dayOffset ?? -999)|\(draft.start ?? -1)"
+            return seen.insert(key).inserted
+        }
+    }
+
     /// Правила: деление на куски, чистка мусора, парсер быстрого ввода для дня, времени и квадранта.
     static func byRules(_ text: String) -> [DraftTask] {
         let parser = QuickAddParser()
-        return DictationSplitter.split(text, linguistics: AppleLinguistics.shared).compactMap { piece in
+        let drafts = DictationSplitter.split(text, linguistics: AppleLinguistics.shared).compactMap { piece -> DraftTask? in
             let cleaned = SpeechCleanup.clean(piece)
             guard SpeechCleanup.isMeaningful(cleaned) else { return nil }
             let parsed = parser.parseTask(cleaned)
             guard !parsed.title.isEmpty, parsed.title != "Новая задача" else { return nil }
-            return DraftTask(parsed: parsed)
+            var draft = DraftTask(parsed: parsed)
+            draft.title = SpeechCleanup.tidyTitle(draft.title)
+            return draft
         }
+        return dedupe(drafts)
     }
 }
 
@@ -54,13 +66,12 @@ enum OnDeviceExtractor {
         }
     }
 
+    /// Модель пробуем всегда, когда она есть: официальный список языков не проверяем, по-русски
+    /// просим в инструкции; если система всё же откажет, разберём правилами.
     static var status: Status {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
-            guard model.supportsLocale(Locale(identifier: "ru_RU")) else {
-                return .unavailable("Apple Intelligence пока не понимает русский — разбор правилами")
-            }
             return .available
         case .unavailable(let reason):
             switch reason {
@@ -96,6 +107,8 @@ enum OnDeviceExtractor {
         var project: String
     }
 
+    /// Инструкция по-английски (так модель слушается лучше), с требованием работать на любом языке
+    /// ввода и отвечать на языке пользователя — по-русски.
     static func instructions(today: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
@@ -103,12 +116,28 @@ enum OnDeviceExtractor {
         let iso = DateFormatter()
         iso.dateFormat = "yyyy-MM-dd"
         return """
-        Ты разбираешь расшифровку голосовой диктовки на отдельные задачи для личного планировщика.
-        Сегодня \(formatter.string(from: today)) (\(iso.string(from: today))).
-        Дели текст по смыслу: одна задача — одно действие; не дроби одну мысль и не склеивай разные.
-        Убирай речевой мусор, повторы, оговорки и вводные слова («ну», «короче», «мне нужно», «как бы»).
-        Ничего не выдумывай: только то, что сказано. Фразы, которые не задачи, пропускай.
-        Отвечай по-русски.
+        You are a multilingual assistant built into a personal task planner. You work in every language,
+        including Russian: the user dictates in Russian, you understand Russian perfectly and you always
+        write task titles in Russian, exactly as a native speaker would. Never refuse or switch languages.
+
+        Today is \(formatter.string(from: today)) (\(iso.string(from: today))). The week starts on Monday.
+
+        Your job: turn a raw speech-to-text transcript into a list of separate tasks.
+        - Split by meaning: one task = one action. Do not split a single thought into pieces and do not
+          merge different actions into one task.
+        - Remove speech fillers, repetitions, self-corrections and lead-ins
+          («ну», «короче», «мне нужно», «как бы», «это самое», «значит»).
+        - Title: short, clear, infinitive verb first («Позвонить маме», «Купить запчасти»), no trailing period,
+          keep names and numbers exactly as said.
+        - Never invent tasks. Skip phrases that are not tasks (comments, interjections).
+        - day: resolve «сегодня», «завтра», «послезавтра», weekday names (the nearest future one) and dates
+          to YYYY-MM-DD; otherwise empty string.
+        - start: 24-hour HH:MM when a time is said («в 10», «в половине третьего» → 14:30); otherwise empty.
+        - durationMinutes: only when said («на час» → 60); otherwise 0.
+        - important / urgent: 1 only when the user explicitly says «важно» / «срочно», -1 for «не важно» /
+          «не срочно», otherwise 0.
+        - project: the name after «по проекту …» or «#…»; otherwise empty.
+        Answer only with the structured result.
         """
     }
 

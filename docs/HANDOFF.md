@@ -25,11 +25,14 @@
   (серия дней), `RoutineManager`, `SpeechRecorder` (диктовка), `TaskExtractor` + `OnDeviceExtractor`
   (разбор расшифровки на устройстве: Apple Intelligence через FoundationModels, иначе правила),
   `AppleLinguistics` (NaturalLanguage: глагол или нет), `DraftTask`;
-  `UI/` — `PlannerScreen` (единственный экран и вся оркестровка жестов), `DayTimelineView` (сетка на 1 или 7
-  дней), `MonthView` (пейджер из трёх месяцев), `MatrixView` (2×2 на экран, проваливание, доска целей),
-  `ProjectsView`, `DashboardView` (Swift Charts), `WeekListView`, `BacklogDrawerView`, `TaskEditSheet`,
-  `VoiceInputSheet`, `DraftEditSheet`, `OverdueSheet`, `SettingsSheet`, `StreakSheet`, `HeaderView`
-  (кнопка «назад», заголовок‑меню видов, меню «…»), `WeekStripView` (пейджер недель), `TaskBlockView`, `Tokens`.
+  `UI/` — `PlannerScreen` (единственный экран: период × режим, пейджер, вся оркестровка жестов),
+  `PagerView` (три страницы рядом, едет за пальцем; зоны и жесты только у средней), `DayTimelineView`
+  (сетка на 1 или 7 дней; `live`/`syncTick` для соседних страниц), `MonthView` (один месяц; удержание
+  создаёт, чипы тянутся), `YearView`, `PeriodListView` (список за период), `MatrixView` (2×2 на экран,
+  проваливание, доска целей), `ProjectsView`, `DashboardView` (Swift Charts), `BacklogDrawerView`,
+  `TaskEditSheet`, `VoiceInputSheet`, `DraftEditSheet`, `OverdueSheet`, `SettingsSheet`, `StreakSheet`,
+  `HeaderView` (`Period`, `Display`; заголовок‑меню периода, кнопка режима, «…», серия, «к сегодня»),
+  `WeekStripView` (пейджер недель), `TaskBlockView`, `Tokens`.
 - `App/QuickWidget/` — расширение‑виджет «Сегодня» (своя цель `QuickWidget` в `project.pbxproj`, читает
   `WidgetSnapshot` из контейнера группы `group.com.ninogvatania.planner`; App Groups прописаны
   в `Planner/Planner.entitlements` и `QuickWidget/QuickWidget.entitlements`).
@@ -52,12 +55,14 @@
   В матрице и проектах во время удержания поверх содержимого появляется «доска» — контейнеры‑цели
   на весь экран (`allowsHitTesting(false)`, зоны сообщает только доска); строки под ней не исчезают,
   поэтому жест живёт.
-- Свайпы между днями / неделями / месяцами: день — одна сетка со смещением `pageX` (уезжает, день
-  подменяется, въезжает с другой стороны); полоска недели и месяц — пейджер из трёх страниц
-  (`offset(-width + dragX)`), зоны сообщает только средняя. Ось жеста фиксируется на первых 12–14 pt,
-  пока задачу держат — свайп не работает.
-- Навигация: `navStack` в `PlannerScreen` (месяц → день, неделя → день) даёт кнопку «назад» в шапке;
-  выбор вида из меню стек сбрасывает.
+- Экран = `period` (день / неделя / месяц / год) × `display` (календарь / список / матрица / проекты /
+  диаграмма). Всё листается одним `PagerView`: страницы `index-1`, `index`, `index+1` рядом,
+  `offset(-width + dragX)`; номер страницы периода считается от сегодняшнего (`currentPeriodIndex`),
+  смена номера сдвигает `dayOffset` на период. Соседние страницы не сообщают зон (`live == false`)
+  и не ловят касания; сетки дня подравнивают прокрутку под общий `GridScroll.offset` по `syncTick`.
+  Пока задачу держат или тянут ручку (`GridScroll.interacting`), листание выключено.
+- Из месяца тап по дню открывает день, из года тап по месяцу — месяц, из недели тап по заголовку — день;
+  кнопки «назад» нет, период всегда выбирается заголовком‑меню.
   Установка на телефон без Mac невозможна (подпись); полностью без Mac — только Xcode Cloud + TestFlight
   при платном аккаунте разработчика.
 - Прототип — эталон жестов и парсера; новые виды (неделя сеткой, месяц, диктовка) сделаны сразу в Swift

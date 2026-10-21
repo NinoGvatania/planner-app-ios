@@ -14,6 +14,8 @@ struct MatrixView: View {
     let onEdit: (PlannerTask) -> Void
     var onDelete: ((PlannerTask) -> Void)? = nil
     var onDragCancelled: (() -> Void)? = nil
+    /// Средняя страница пейджера: только она сообщает зоны сброса.
+    var live = true
 
     @AppStorage("matrixLayout") private var layoutRaw = "grid"
     /// Открытый на весь экран квадрант: 1…4 — квадрант, 0 — «Не разобрано».
@@ -551,10 +553,10 @@ struct MatrixView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(hovered ? Tokens.accent.opacity(0.18) : style.background, in: RoundedRectangle(cornerRadius: 18))
+        .glassEffect(.regular.tint(hovered ? Tokens.accent.opacity(0.35) : style.background.opacity(0.9)), in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: hovered ? 2.5 : 1.5))
         .scaleEffect(hovered ? 1.02 : 1)
         .animation(.easeOut(duration: 0.12), value: hovered)
-        .reportZone("quad-\(raw)", enabled: drag != nil)
+        .reportZone("quad-\(raw)", enabled: live && drag != nil)
     }
 }

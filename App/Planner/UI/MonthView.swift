@@ -1,23 +1,35 @@
 import PlannerCore
 import SwiftUI
 
-/// Месяц: сетка недель с понедельника, всегда шесть строк, в клетке — число и чипы задач по цвету.
-/// Тап по дню открывает его в виде «День». Свайп влево/вправо листает месяцы — страница едет за пальцем
-/// (соседние месяцы отрисованы рядом). Каждая клетка — зона сброса (задача переезжает на этот день).
+/// Один месяц: сетка недель с понедельника, всегда шесть строк, в клетке — число и чипы задач по цвету.
+/// Тап по дню открывает его, удержание на пустом месте создаёт задачу на этот день, удержание чипа —
+/// перенос, каждая клетка — зона сброса (задача переезжает на этот день, время сохраняется).
+/// Листание месяцев делает `PagerView` снаружи.
 struct MonthView: View {
     /// Любой день нужного месяца.
     let anchor: Date
     let tasks: [PlannerTask]
     let drag: DragState?
+    var live = true
     let onSelectDay: (Int) -> Void
-    /// Пользователь пролистнул: +1 — следующий месяц, −1 — прошлый. Без анимации снаружи: она уже прошла.
-    let onShiftMonth: (Int) -> Void
+    let onEdit: (PlannerTask) -> Void
+    let onCreate: (Int) -> Void
+    let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
+    let onDragEnded: () -> Void
+    var onDragCancelled: (() -> Void)? = nil
 
-    @State private var dragX: CGFloat = 0
-    @State private var axis: Axis?
-    @State private var pageWidth: CGFloat = 0
+    /// День, на котором уже создали задачу этим удержанием (чтобы не создавать второй раз).
+    @State private var creatingDay: Int?
 
     private var monthStart: Date { DayMath.monthStart(of: anchor) }
+    private var monthIndex: Int { DayMath.monthIndex(monthStart) }
+
+    /// Недели месяца как смещения дней от сегодняшнего: всегда шесть строк, чтобы сетка не прыгала.
+    private var weeks: [[Int]] {
+        let first = DayMath.offset(of: monthStart)
+        let gridStart = DayMath.weekStartOffset(containing: first)
+        return (0..<6).map { row in (0..<7).map { gridStart + row * 7 + $0 } }
+    }
 
     private var tasksByDay: [Date: [PlannerTask]] {
         var result: [Date: [PlannerTask]] = [:]
@@ -40,27 +52,22 @@ struct MonthView: View {
             weekdayHeader
             Rectangle().fill(Tokens.line).frame(height: 1)
             GeometryReader { geometry in
-                let width = geometry.size.width
-                HStack(spacing: 0) {
-                    monthGrid(DayMath.date(monthStart, addingMonths: -1), byDay: byDay, size: geometry.size, live: false)
-                    monthGrid(monthStart, byDay: byDay, size: geometry.size, live: true)
-                    monthGrid(DayMath.date(monthStart, addingMonths: 1), byDay: byDay, size: geometry.size, live: false)
+                let rows = weeks
+                let cellHeight = geometry.size.height / CGFloat(max(1, rows.count))
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, week in
+                        HStack(spacing: 0) {
+                            ForEach(week, id: \.self) { offset in
+                                cell(offset: offset, height: cellHeight, tasks: byDay[DayMath.day(offset: offset)] ?? [])
+                            }
+                        }
+                        .frame(height: cellHeight)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Tokens.line).frame(height: 1) }
+                    }
                 }
-                .offset(x: -width + dragX)
-                .onChange(of: width, initial: true) { _, value in pageWidth = value }
             }
-            .clipped()
         }
         .padding(.horizontal, 6)
-        .contentShape(Rectangle())
-        .simultaneousGesture(swipe)
-        .onChange(of: drag?.taskID) { _, id in
-            // Взяли задачу — страницу не двигаем, даже если свайп уже начался.
-            guard id != nil else { return }
-            axis = .vertical
-            if dragX != 0 { withAnimation(.easeOut(duration: 0.15)) { dragX = 0 } }
-        }
-        .task { await hintSwipeOnce() }
     }
 
     /// Подписи дней недели; по краям — стрелки-намёк, что месяцы листаются (места не занимают).
@@ -89,82 +96,7 @@ struct MonthView: View {
         .accessibilityHint("Свайп влево или вправо листает месяцы")
     }
 
-    // MARK: - Свайп
-
-    private var swipe: some Gesture {
-        DragGesture(minimumDistance: 14)
-            .onChanged { value in
-                if axis == nil {
-                    // Пока задачу держат над месяцем, страницу не двигаем.
-                    axis = drag == nil && abs(value.translation.width) > abs(value.translation.height) * 1.3 ? .horizontal : .vertical
-                }
-                guard axis == .horizontal else { return }
-                dragX = value.translation.width
-            }
-            .onEnded { value in
-                let wasHorizontal = axis == .horizontal
-                axis = nil
-                guard wasHorizontal, pageWidth > 0 else { return }
-                let width = pageWidth
-                let projected = value.predictedEndTranslation.width
-                if abs(value.translation.width) > width * 0.2 || abs(projected) > width * 0.45 {
-                    let direction = value.translation.width < 0 ? 1 : -1
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        dragX = -CGFloat(direction) * width
-                    } completion: {
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) {
-                            onShiftMonth(direction)
-                            dragX = 0
-                        }
-                    }
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) { dragX = 0 }
-                }
-            }
-    }
-
-    /// Один раз за запуск сетка чуть отъезжает и возвращается — видно, что сбоку есть следующий месяц.
-    private func hintSwipeOnce() async {
-        guard !MonthSwipeHint.shown else { return }
-        MonthSwipeHint.shown = true
-        try? await Task.sleep(for: .seconds(0.5))
-        guard dragX == 0, drag == nil else { return }
-        withAnimation(.easeInOut(duration: 0.28)) { dragX = -36 }
-        try? await Task.sleep(for: .seconds(0.32))
-        withAnimation(.spring(duration: 0.4, bounce: 0.3)) { dragX = 0 }
-    }
-
-    // MARK: - Сетка месяца
-
-    /// Недели месяца как смещения дней от сегодняшнего: всегда шесть строк, чтобы сетка не прыгала.
-    private func weeks(of start: Date) -> [[Int]] {
-        let first = DayMath.offset(of: start)
-        let gridStart = DayMath.weekStartOffset(containing: first)
-        return (0..<6).map { row in (0..<7).map { gridStart + row * 7 + $0 } }
-    }
-
-    private func monthGrid(_ start: Date, byDay: [Date: [PlannerTask]], size: CGSize, live: Bool) -> some View {
-        let rows = weeks(of: start)
-        let monthIndex = DayMath.monthIndex(start)
-        let cellHeight = size.height / CGFloat(max(1, rows.count))
-        return VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, week in
-                HStack(spacing: 0) {
-                    ForEach(week, id: \.self) { offset in
-                        cell(offset: offset, height: cellHeight, tasks: byDay[DayMath.day(offset: offset)] ?? [], monthIndex: monthIndex, live: live)
-                    }
-                }
-                .frame(height: cellHeight)
-                .overlay(alignment: .bottom) { Rectangle().fill(Tokens.line).frame(height: 1) }
-            }
-        }
-        .frame(width: size.width, height: size.height)
-        .accessibilityHidden(!live)
-    }
-
-    private func cell(offset: Int, height: CGFloat, tasks: [PlannerTask], monthIndex: Int, live: Bool) -> some View {
+    private func cell(offset: Int, height: CGFloat, tasks: [PlannerTask]) -> some View {
         let date = DayMath.day(offset: offset)
         let inMonth = DayMath.monthIndex(date) == monthIndex
         let today = offset == 0
@@ -199,9 +131,22 @@ struct MonthView: View {
         .overlay(alignment: .trailing) { Rectangle().fill(Tokens.line.opacity(0.6)).frame(width: 1) }
         .contentShape(Rectangle())
         .onTapGesture { onSelectDay(offset) }
+        .gesture(
+            HoldDragGesture(onChanged: { _, _ in
+                // Удержание на дне: одна задача «на весь день» за одно удержание, название спросит экран.
+                guard creatingDay != offset else { return }
+                creatingDay = offset
+                onCreate(offset)
+            }, onEnded: {
+                creatingDay = nil
+            }, onCancelled: {
+                creatingDay = nil
+            })
+        )
         .reportZone("tab-\(offset)", enabled: live)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(DayMath.accessibilityLabel(offset: offset) + ", задач: \(tasks.count)")
+        .accessibilityHint("Удержание создаёт задачу")
     }
 
     private func chip(_ task: PlannerTask) -> some View {
@@ -218,12 +163,9 @@ struct MonthView: View {
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 1).fill(style.dot).frame(width: 2).padding(.vertical, 2)
             }
-            .opacity(task.isDone ? 0.5 : 1)
+            .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
+            .contentShape(Rectangle())
+            .onTapGesture { onEdit(task) }
+            .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
-}
-
-/// Намёк на свайп показывается один раз за запуск.
-@MainActor
-enum MonthSwipeHint {
-    static var shown = false
 }
