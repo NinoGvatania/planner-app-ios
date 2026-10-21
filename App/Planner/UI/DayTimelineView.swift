@@ -288,7 +288,7 @@ struct DayTimelineView: View {
             VStack(spacing: 0) {
                 ForEach(0..<24, id: \.self) { hour in
                     hourRow(hour)
-                        .frame(height: Tokens.hourHeight)
+                        .frame(height: Tokens.hourHeight, alignment: .top)
                 }
             }
             .padding(.top, topInset)
