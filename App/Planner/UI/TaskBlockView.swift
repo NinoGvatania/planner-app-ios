@@ -12,16 +12,19 @@ struct TaskBlockView: View {
     var selected: Bool = false
     /// Длительность во время растягивания (иначе — из задачи).
     var liveDuration: Int? = nil
+    /// Начало во время растягивания за верхний край (иначе — из задачи).
+    var liveStart: Int? = nil
     var dimmed: Bool = false
     let onToggle: () -> Void
 
     private var duration: Int { liveDuration ?? task.duration }
+    private var startMinutes: Int? { liveStart ?? task.start }
     private var tall: Bool { height >= (compact ? 46 : 40) }
     private var titleSize: CGFloat { compact ? 11 : 13 }
     private var timeSize: CGFloat { compact ? 11 : 11.5 }
 
     private var timeText: String {
-        guard let start = task.start else { return "" }
+        guard let start = startMinutes else { return "" }
         if compact {
             return selected ? ClockGrid.formatDuration(duration) : ClockGrid.format(minutes: start)
         }
@@ -30,7 +33,7 @@ struct TaskBlockView: View {
     }
 
     private var shortTimeText: String {
-        guard let start = task.start else { return "" }
+        guard let start = startMinutes else { return "" }
         return selected ? ClockGrid.formatDuration(duration) : ClockGrid.format(minutes: start)
     }
 

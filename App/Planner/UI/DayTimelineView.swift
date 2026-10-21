@@ -13,6 +13,8 @@ struct DayTimelineView: View {
     let drag: DragState?
     let onToggle: (PlannerTask) -> Void
     let onResize: (PlannerTask, Int) -> Void
+    /// Растягивание за верхний край: (задача, новое начало, новая длительность).
+    let onRetime: (PlannerTask, Int, Int) -> Void
     /// (задача, где палец, где палец был в начале) в координатах «planner».
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
@@ -23,6 +25,7 @@ struct DayTimelineView: View {
     var onShiftDays: ((Int) -> Void)? = nil
 
     @State private var liveDuration: Int?
+    @State private var liveStart: Int?
     /// Силуэт создаваемой задачи, пока тянут по свободному месту.
     @State private var creating: (day: Int, start: Int, duration: Int)?
     @State private var scrollPosition = ScrollPosition(edge: .top)
@@ -69,10 +72,14 @@ struct DayTimelineView: View {
         task.id == selectedID ? (liveDuration ?? task.duration) : task.duration
     }
 
+    private func start(of task: PlannerTask) -> Int {
+        task.id == selectedID ? (liveStart ?? task.start ?? 0) : (task.start ?? 0)
+    }
+
     private func placements(_ list: [PlannerTask], day: Date) -> [String: LanePlacement] {
         let items = list
             .filter { $0.day == day }
-            .map { LayoutItem(id: $0.id.uuidString, start: $0.start ?? 0, duration: duration(of: $0)) }
+            .map { LayoutItem(id: $0.id.uuidString, start: start(of: $0), duration: duration(of: $0)) }
         var result: [String: LanePlacement] = [:]
         for placement in DayLayout.lanes(for: items) {
             result[placement.id] = placement
@@ -308,7 +315,9 @@ struct DayTimelineView: View {
                 }
                 if drag == nil, let selected = list.first(where: { $0.id == selectedID && $0.day == date }),
                    let placement = placed[selected.id.uuidString] {
-                    resizeHandle(selected, placement: placement, columnLeft: left, columnWidth: columnWidth)
+                    resizeHandle(selected, edge: .top, placement: placement, columnLeft: left, columnWidth: columnWidth)
+                        .zIndex(3)
+                    resizeHandle(selected, edge: .bottom, placement: placement, columnLeft: left, columnWidth: columnWidth)
                         .zIndex(3)
                 }
             }
@@ -346,6 +355,7 @@ struct DayTimelineView: View {
                 if selectedID != nil {
                     selectedID = nil
                     liveDuration = nil
+                    liveStart = nil
                 } else {
                     let start = snappedMinutes(forY: location.y)
                     onCreate(day, ClockGrid.clampedStart(start, duration: 30), 30)
@@ -375,7 +385,7 @@ struct DayTimelineView: View {
     private func block(_ task: PlannerTask, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat, phantom: Bool) -> some View {
         let laneWidth = columnWidth / CGFloat(placement.laneCount)
         let width = max(0, laneWidth - 6)
-        let start = task.start ?? 0
+        let start = start(of: task)
         let dur = duration(of: task)
         let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
         let height = max(CGFloat(dur) / 60 * Tokens.hourHeight - 2, 24)
@@ -388,6 +398,7 @@ struct DayTimelineView: View {
             narrow: laneWidth < 76,
             selected: selected,
             liveDuration: selected ? liveDuration : nil,
+            liveStart: selected ? liveStart : nil,
             dimmed: drag?.taskID == task.id,
             onToggle: { onToggle(task) }
         )
@@ -400,40 +411,63 @@ struct DayTimelineView: View {
             } else {
                 selectedID = task.id
                 liveDuration = nil
+                liveStart = nil
             }
         }
         .gesture(dragGesture(for: task))
     }
 
-    private func resizeHandle(_ task: PlannerTask, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
+    private enum HandleEdge { case top, bottom }
+
+    /// Ручка растягивания: нижняя двигает конец, верхняя — начало (конец на месте). Шаг 15 минут.
+    /// Тап по ручке без движения — как тап по выделенному блоку: открывает редактор.
+    private func resizeHandle(_ task: PlannerTask, edge: HandleEdge, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
         let laneWidth = columnWidth / CGFloat(placement.laneCount)
         let width = max(0, laneWidth - 6)
-        let start = task.start ?? 0
+        let start = start(of: task)
         let top = topInset + CGFloat(start) / 60 * Tokens.hourHeight + 1
         let height = max(CGFloat(duration(of: task)) / 60 * Tokens.hourHeight - 2, 24)
         let centerX = columnLeft + laneWidth * CGFloat(placement.lane) + 3 + width / 2
+        let originalStart = task.start ?? 0
+        let originalEnd = originalStart + task.duration
         return Capsule()
             .fill(Color.white)
             .frame(width: 44, height: 6)
             .overlay(Capsule().stroke(Tokens.background, lineWidth: 2))
-            .frame(width: 88, height: 40)
+            .frame(width: 88, height: 36)
             .contentShape(Rectangle())
-            .position(x: centerX, y: top + height)
+            .position(x: centerX, y: edge == .top ? top : top + height)
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .named("planner"))
                     .onChanged { value in
-                        let bottom = gridY(fromPlannerY: value.location.y) - topInset
-                        let minutes = Int((bottom / Tokens.hourHeight * 60 / 15).rounded()) * 15
-                        let newDuration = max(15, min(minutes - start, ClockGrid.dayEnd - start))
-                        if newDuration != liveDuration { liveDuration = newDuration }
+                        let y = gridY(fromPlannerY: value.location.y) - topInset
+                        let minutes = Int((y / Tokens.hourHeight * 60 / 15).rounded()) * 15
+                        switch edge {
+                        case .bottom:
+                            let newDuration = max(15, min(minutes - start, ClockGrid.dayEnd - start))
+                            if newDuration != liveDuration { liveDuration = newDuration }
+                        case .top:
+                            let newStart = max(0, min(originalEnd - 15, minutes))
+                            if newStart != liveStart {
+                                liveStart = newStart
+                                liveDuration = originalEnd - newStart
+                            }
+                        }
                         updateAutoScroll(fingerY: value.location.y)
                     }
-                    .onEnded { _ in
+                    .onEnded { value in
                         stopAutoScroll()
-                        if let value = liveDuration, value != task.duration {
-                            onResize(task, value)
+                        let moved = abs(value.translation.height) > 3 || abs(value.translation.width) > 3
+                        if !moved {
+                            onEdit(task)
+                        } else if let newStart = liveStart, let newDuration = liveDuration,
+                                  newStart != originalStart || newDuration != task.duration {
+                            onRetime(task, newStart, newDuration)
+                        } else if let newDuration = liveDuration, newDuration != task.duration {
+                            onResize(task, newDuration)
                         }
                         liveDuration = nil
+                        liveStart = nil
                     }
             )
             .accessibilityHidden(true)

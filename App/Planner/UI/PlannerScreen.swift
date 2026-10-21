@@ -128,6 +128,7 @@ struct PlannerScreen: View {
                     drag: drag,
                     onToggle: toggleDone,
                     onResize: resize,
+                    onRetime: retime,
                     onDragChanged: dragChanged,
                     onDragEnded: dragEnded,
                     onCreate: createTask,
@@ -436,6 +437,13 @@ struct PlannerScreen: View {
     }
 
     private func resize(_ task: PlannerTask, to duration: Int) {
+        task.duration = duration
+        NotificationScheduler.sync(tasks)
+    }
+
+    /// Растягивание за верхний край: меняется начало, конец остаётся.
+    private func retime(_ task: PlannerTask, start: Int, duration: Int) {
+        task.start = start
         task.duration = duration
         NotificationScheduler.sync(tasks)
     }
