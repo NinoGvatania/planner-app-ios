@@ -26,7 +26,8 @@ enum ViewMode: String, CaseIterable, Identifiable {
     }
 }
 
-/// Шапка: дата, «Просрочено · N», переключатель вида, «к сегодня».
+/// Шапка: «назад» вверх по иерархии (месяц → неделя → день), заголовок-меню с выбором вида,
+/// «Просрочено · N», меню настроек, «к сегодня».
 struct HeaderView: View {
     let title: String
     let subtitle: String
@@ -35,24 +36,60 @@ struct HeaderView: View {
     @Binding var mode: ViewMode
     @Binding var showDone: Bool
     @Binding var colorMode: ColorMode
+    /// Куда ведёт кнопка «назад» (например, «Октябрь» из дня, открытого из месяца); `nil` — кнопки нет.
+    var backTitle: String? = nil
+    var onBack: () -> Void = {}
     let onOverdue: () -> Void
     let onToday: () -> Void
     let onProjects: () -> Void
     let onSettings: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 22, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Tokens.caption)
-                    .lineLimit(1)
+        HStack(alignment: .center, spacing: 8) {
+            if let backTitle {
+                Button(action: onBack) {
+                    HStack(spacing: 1) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                        Text(backTitle)
+                            .font(.system(size: 14, weight: .medium))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(Tokens.accent)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Назад: " + backTitle)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Menu {
+                Picker("Вид", selection: $mode) {
+                    ForEach(ViewMode.allCases) { item in
+                        Label(item.title, systemImage: item.symbol).tag(item)
+                    }
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Text(title)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(Tokens.text)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Tokens.caption)
+                    }
+                    Text(subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Tokens.caption)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, minHeight: Tokens.hitTarget, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Вид: \(mode.title). Выбрать другой")
 
             if overdueCount > 0 {
                 Button(action: onOverdue) {
@@ -77,12 +114,6 @@ struct HeaderView: View {
 
             HStack(spacing: 0) {
                 Menu {
-                    Picker("Вид", selection: $mode) {
-                        ForEach(ViewMode.allCases) { item in
-                            Label(item.title, systemImage: item.symbol).tag(item)
-                        }
-                    }
-                    Divider()
                     Toggle("Показывать выполненные", isOn: $showDone)
                     Picker("Цвет задач", selection: $colorMode) {
                         ForEach(ColorMode.allCases) { item in
@@ -94,11 +125,11 @@ struct HeaderView: View {
                     Divider()
                     Text("Сборка \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
                 } label: {
-                    Image(systemName: mode.symbol)
-                        .font(.system(size: 18, weight: .medium))
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 19, weight: .medium))
                         .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
                 }
-                .accessibilityLabel("Переключить вид")
+                .accessibilityLabel("Ещё: выполненные, цвета, проекты, настройки")
 
                 Button(action: onToday) {
                     Image(systemName: (1...50).contains(todayNumber) ? "\(todayNumber).square" : "calendar")
@@ -111,7 +142,7 @@ struct HeaderView: View {
             .background(Tokens.cluster, in: Capsule())
             .foregroundStyle(Tokens.text)
         }
-        .padding(.leading, 18)
+        .padding(.leading, backTitle == nil ? 18 : 8)
         .padding(.trailing, 12)
         .padding(.top, 8)
         .padding(.bottom, 6)

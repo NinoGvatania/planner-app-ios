@@ -32,6 +32,11 @@ struct PlannerScreen: View {
     @State private var scrollToNowRequest = 0
     @State private var showProjects = false
     @State private var showSettings = false
+    /// Откуда пришли в текущий вид (месяц → день, неделя → день): кнопка «назад» ведёт обратно.
+    @State private var navStack: [ViewMode] = []
+    /// Горизонтальный сдвиг сетки дня при свайпе между днями.
+    @State private var pageX: CGFloat = 0
+    @State private var swipeAxis: Axis?
     @AppStorage("colorMode") private var colorModeRaw = ColorMode.quadrant.rawValue
 
     private let gridTopInset: CGFloat = 10
@@ -55,8 +60,11 @@ struct PlannerScreen: View {
     private var visibleDays: [Int] {
         mode == .week ? Array(weekStart...(weekStart + 6)) : [dayOffset]
     }
-    /// Полоска недели начинается с сегодня; если выбранный день дальше — с понедельника его недели.
-    private var stripStart: Int { (0...6).contains(dayOffset) ? 0 : weekStart }
+    /// Заголовок кнопки «назад»: название вида, из которого открыли текущий.
+    private var backTitle: String? {
+        guard let parent = navStack.last else { return nil }
+        return parent == .month ? DayMath.monthNominative[DayMath.monthIndex(monthAnchor)] : parent.title
+    }
     private var monthAnchor: Date { DayMath.day(offset: dayOffset) }
 
     private var headerTitle: String {
@@ -125,17 +133,28 @@ struct PlannerScreen: View {
                 subtitle: headerSubtitle,
                 overdueCount: overdueTasks.count,
                 todayNumber: DayMath.dayOfMonth(today),
-                mode: $mode,
+                mode: Binding(
+                    get: { mode },
+                    set: { value in
+                        navStack = []
+                        withAnimation(.easeOut(duration: 0.2)) { mode = value }
+                    }
+                ),
                 showDone: $showDone,
                 colorMode: Binding(
                     get: { ColorMode(rawValue: colorModeRaw) ?? .quadrant },
                     set: { colorModeRaw = $0.rawValue }
                 ),
+                backTitle: backTitle,
+                onBack: goBack,
                 onOverdue: { showOverdue = true },
                 onToday: {
                     withAnimation {
                         dayOffset = 0
-                        if mode == .matrix || mode == .weekList { mode = .day }
+                        if mode == .matrix || mode == .weekList {
+                            mode = .day
+                            navStack = []
+                        }
                     }
                     scrollToNowRequest += 1
                 },
@@ -146,10 +165,12 @@ struct PlannerScreen: View {
             switch mode {
             case .day, .week:
                 if mode == .day {
-                    WeekStripView(dayOffset: $dayOffset, start: stripStart, hasTasks: { offset in
+                    WeekStripView(dayOffset: $dayOffset, start: weekStart, hasTasks: { offset in
                         let date = DayMath.day(offset: offset)
                         return visibleTasks.contains { $0.day == date }
-                    }, hoveredOffset: hoveredTab)
+                    }, hoveredOffset: hoveredTab, onShiftWeek: { direction in
+                        slideDays(by: 7 * direction, direction: direction)
+                    })
                 }
                 DayTimelineView(
                     days: visibleDays,
@@ -164,26 +185,36 @@ struct PlannerScreen: View {
                     onCreate: createTask,
                     onEdit: { editingTask = $0 },
                     onShiftDays: shiftDays,
+                    onSelectDay: { offset in
+                        navStack = [.week]
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            dayOffset = offset
+                            mode = .day
+                        }
+                    },
                     scroll: gridScroll,
                     onAutoScrollTick: refreshDropTarget,
                     scrollToNowRequest: scrollToNowRequest,
                     onDragCancelled: dragCancelled
                 )
+                .offset(x: mode == .day ? pageX : 0)
+                .clipped()
+                .simultaneousGesture(daySwipe, including: mode == .day ? .all : .subviews)
             case .month:
                 MonthView(
                     anchor: monthAnchor,
                     tasks: visibleTasks,
                     drag: drag,
                     onSelectDay: { offset in
+                        navStack = [.month]
                         withAnimation(.easeOut(duration: 0.2)) {
                             dayOffset = offset
                             mode = .day
                         }
                     },
                     onShiftMonth: { delta in
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            dayOffset = DayMath.offset(of: DayMath.date(monthAnchor, addingMonths: delta))
-                        }
+                        // Страница уже уехала за пальцем — подменяем месяц без анимации.
+                        dayOffset = DayMath.offset(of: DayMath.date(monthAnchor, addingMonths: delta))
                     }
                 )
             case .matrix:
@@ -245,6 +276,8 @@ struct PlannerScreen: View {
             drag = nil
             springTask?.cancel()
             springOffset = nil
+            pageX = 0
+            swipeAxis = nil
         }
         .fullScreenCover(isPresented: $showVoice) {
             VoiceInputSheet(onDone: addDrafts)
@@ -275,6 +308,63 @@ struct PlannerScreen: View {
     private func shiftDays(by delta: Int) {
         withAnimation(.easeOut(duration: 0.2)) {
             dayOffset = max(-365, min(365, dayOffset + delta))
+        }
+    }
+
+    /// Кнопка «назад»: вернуться в вид, из которого открыли текущий.
+    private func goBack() {
+        guard let parent = navStack.popLast() else { return }
+        withAnimation(.easeOut(duration: 0.2)) { mode = parent }
+    }
+
+    /// Свайп по сетке дня: влево — следующий день, вправо — прошлый. Сетка едет за пальцем;
+    /// пока задачу держат, свайп не работает, а вертикальная прокрутка остаётся прокруткой.
+    private var daySwipe: some Gesture {
+        DragGesture(minimumDistance: 14, coordinateSpace: .named("planner"))
+            .onChanged { value in
+                if swipeAxis == nil {
+                    swipeAxis = drag == nil && abs(value.translation.width) > abs(value.translation.height) * 1.4 ? .horizontal : .vertical
+                }
+                guard swipeAxis == .horizontal, drag == nil else { return }
+                pageX = value.translation.width
+            }
+            .onEnded { value in
+                let horizontal = swipeAxis == .horizontal
+                swipeAxis = nil
+                guard horizontal else { return }
+                let width = rootSize.width
+                guard drag == nil, width > 0 else {
+                    withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
+                    return
+                }
+                if abs(value.translation.width) > width * 0.22 || abs(value.predictedEndTranslation.width) > width * 0.5 {
+                    let direction = value.translation.width < 0 ? 1 : -1
+                    slideDays(by: direction, direction: direction)
+                } else {
+                    withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
+                }
+            }
+    }
+
+    /// Уехать в сторону `direction`, подменить день на `delta` и въехать с другой стороны.
+    private func slideDays(by delta: Int, direction: Int) {
+        let width = rootSize.width
+        guard width > 0 else {
+            shiftDays(by: delta)
+            return
+        }
+        withAnimation(.easeOut(duration: 0.16)) {
+            pageX = -CGFloat(direction) * width
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                dayOffset = max(-365, min(365, dayOffset + delta))
+                pageX = CGFloat(direction) * width
+            }
+            Task { @MainActor in
+                withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
+            }
         }
     }
 

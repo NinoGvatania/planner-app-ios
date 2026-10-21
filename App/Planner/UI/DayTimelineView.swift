@@ -37,6 +37,8 @@ struct DayTimelineView: View {
     let onEdit: (PlannerTask) -> Void
     /// Сдвинуть окно дней (свайп по заголовкам недели).
     var onShiftDays: ((Int) -> Void)? = nil
+    /// Тап по заголовку дня в неделе — открыть этот день.
+    var onSelectDay: ((Int) -> Void)? = nil
     /// Смещение прокрутки сетки, общее с экраном (для зон сброса).
     let scroll: GridScroll
     /// Сетка проехала сама под неподвижным пальцем — экран пересчитывает цель сброса.
@@ -225,8 +227,12 @@ struct DayTimelineView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
                 .background(hovered ? Tokens.accent.opacity(0.22) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                .contentShape(Rectangle())
+                .onTapGesture { onSelectDay?(offset) }
                 .reportZone("tab-\(offset)")
                 .accessibilityLabel(DayMath.accessibilityLabel(offset: offset))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Открыть день")
             }
         }
         .padding(.trailing, 8)
