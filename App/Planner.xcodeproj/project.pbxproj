@@ -260,10 +260,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Планировщик";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Доступ к Календарю нужен, чтобы выгружать задачи событиями в свой календарь.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Микрофон нужен, чтобы надиктовывать задачи.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Распознавание речи превращает диктовку в задачи.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -290,10 +291,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Планировщик";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Доступ к Календарю нужен, чтобы выгружать задачи событиями в свой календарь.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Микрофон нужен, чтобы надиктовывать задачи.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Распознавание речи превращает диктовку в задачи.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

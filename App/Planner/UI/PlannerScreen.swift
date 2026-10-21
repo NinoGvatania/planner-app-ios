@@ -75,6 +75,7 @@ struct PlannerScreen: View {
         case .month: return DayMath.monthNominative[DayMath.monthIndex(monthAnchor)] + " \(DayMath.year(monthAnchor))"
         case .matrix: return "Матрица"
         case .projects: return "Проекты"
+        case .dashboard: return "Дашборд"
         }
     }
 
@@ -96,6 +97,8 @@ struct PlannerScreen: View {
         case .projects:
             let n = tasks.filter { !$0.isDone && !$0.isRoutine && $0.project != nil }.count
             return "\(n) " + DayMath.plural(n, "задача", "задачи", "задач") + " в проектах"
+        case .dashboard:
+            return "Время по проектам"
         }
     }
 
@@ -155,7 +158,7 @@ struct PlannerScreen: View {
                 onToday: {
                     withAnimation {
                         dayOffset = 0
-                        if mode == .matrix || mode == .weekList || mode == .projects {
+                        if mode == .matrix || mode == .weekList || mode == .projects || mode == .dashboard {
                             mode = .day
                             navStack = []
                         }
@@ -227,6 +230,8 @@ struct PlannerScreen: View {
                 WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled)
             case .projects:
                 ProjectsView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onManageProjects: { showProjects = true }, onDragCancelled: dragCancelled)
+            case .dashboard:
+                DashboardView(tasks: tasks, onOpenProjects: { showProjects = true })
             }
 
             BacklogDrawerView(

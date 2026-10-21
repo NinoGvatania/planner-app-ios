@@ -26,31 +26,38 @@ struct OverdueSheet: View {
                 .frame(width: 38, height: 5)
                 .padding(.top, 8)
             HStack(spacing: 8) {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
-                        .background(Tokens.badge, in: Circle())
+                HStack(spacing: 8) {
+                    Text("Просрочено")
+                        .font(.system(size: 17, weight: .bold))
+                    Text("\(tasks.count)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xC9C9D1))
+                        .frame(minWidth: 22, minHeight: 22)
+                        .padding(.horizontal, 3)
+                        .background(Tokens.badge, in: Capsule())
                 }
-                .accessibilityLabel("Закрыть")
-                Text("Просрочено")
-                    .font(.system(size: 17, weight: .bold))
-                    .frame(maxWidth: .infinity)
+                Spacer()
                 Button {
                     withAnimation(.easeOut(duration: 0.2)) { moveOpen.toggle() }
                 } label: {
                     Text("Перенести")
                         .font(.system(size: 15, weight: .bold))
-                        .padding(.horizontal, 16)
-                        .frame(height: Tokens.hitTarget)
+                        .padding(.horizontal, 14)
+                        .frame(height: 36)
                         .background(moveOpen ? Color(hex: 0xA93832) : Color(hex: 0xC8433C), in: Capsule())
                         .foregroundStyle(.white)
                 }
                 .disabled(tasks.isEmpty)
+                Button("Готово") { dismiss() }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Tokens.accent)
+                    .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
+                    .accessibilityLabel("Закрыть")
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 6)
-            .padding(.bottom, 12)
+            .padding(.leading, 18)
+            .padding(.trailing, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
 
             if moveOpen {
                 VStack(spacing: 8) {
@@ -99,12 +106,28 @@ struct OverdueSheet: View {
                         .listRowSeparator(.hidden)
                         .contentShape(Rectangle())
                         .onTapGesture { editing = task }
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            Button {
+                                onToggle(task)
+                            } label: {
+                                Label(task.isDone ? "Вернуть" : "Сделано", systemImage: task.isDone ? "arrow.uturn.backward" : "checkmark")
+                            }
+                            .tint(Color(hex: 0x2F9E5B))
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 onDelete(task)
                             } label: {
                                 Label("Удалить", systemImage: "trash")
                             }
+                            Button {
+                                task.day = nil
+                                task.start = nil
+                                onChanged()
+                            } label: {
+                                Label("В бэклог", systemImage: "tray.and.arrow.down")
+                            }
+                            .tint(Color(hex: 0x4A4B52))
                         }
                 }
                 if tasks.isEmpty {

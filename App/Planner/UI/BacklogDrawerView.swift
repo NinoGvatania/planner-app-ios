@@ -130,6 +130,17 @@ struct BacklogDrawerView: View {
                     Text(hint)
                         .font(.system(size: 13))
                         .foregroundStyle(Tokens.accent)
+                } else if isOpen {
+                    Button("Готово") {
+                        withAnimation(.spring(duration: 0.3)) {
+                            isFull = false
+                            isOpen = false
+                        }
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Tokens.accent)
+                    .frame(minWidth: Tokens.hitTarget, minHeight: 36)
+                    .accessibilityLabel("Свернуть бэклог")
                 } else {
                     Image(systemName: "chevron.up")
                         .font(.system(size: 13, weight: .bold))

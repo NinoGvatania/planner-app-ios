@@ -7,8 +7,10 @@ enum NotificationScheduler {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
-    /// Пересоздаёт уведомления для ближайших задач с временем (не сделанных, в будущем).
+    /// Пересоздаёт уведомления для ближайших задач с временем (не сделанных, в будущем)
+    /// и заодно планирует экспорт в Календарь, если он включён.
     static func sync(_ tasks: [PlannerTask]) {
+        CalendarSync.schedule(tasks)
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
         let now = Date()
