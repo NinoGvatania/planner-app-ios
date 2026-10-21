@@ -1,10 +1,10 @@
 import PlannerCore
 import SwiftUI
 
-/// Матрица Эйзенхауэра. Два режима: «Матрица» — 2×2 квадранта, каждый растёт под свои задачи,
-/// страница прокручивается целиком; «Список» — четыре секции по убыванию приоритета, все задачи видны.
-/// Квадранты и секции — зоны сброса: перетаскивание меняет квадрант задачи. Под ними полка
-/// «Не разобрано» для серых задач без квадранта.
+/// Матрица Эйзенхауэра. «Матрица» — 2×2 квадранта и полка «Не разобрано», всё целиком на экране:
+/// в клетке столько задач, сколько влезает, остальное — «+N»; тап по клетке проваливается в полный
+/// список квадранта. «Список» — секции по убыванию приоритета, каждую можно свернуть.
+/// Пока задачу держат, поверх всего появляется доска из пяти цветных контейнеров — бросать можно куда угодно.
 struct MatrixView: View {
     let tasks: [PlannerTask]
     let drag: DragState?
@@ -12,11 +12,27 @@ struct MatrixView: View {
     let onDragChanged: (PlannerTask, CGPoint, CGPoint) -> Void
     let onDragEnded: () -> Void
     let onEdit: (PlannerTask) -> Void
+    var onDelete: ((PlannerTask) -> Void)? = nil
     var onDragCancelled: (() -> Void)? = nil
 
     @AppStorage("matrixLayout") private var layoutRaw = "grid"
+    /// Открытый на весь экран квадрант: 1…4 — квадрант, 0 — «Не разобрано».
+    @State private var expanded: Int?
+    /// Свёрнутые секции режима «Список».
+    @State private var collapsed: Set<Int> = []
+
     private let labelWidth: CGFloat = 18
+    private let cellSpacing: CGFloat = 8
+    private let rowHeight: CGFloat = 40
+    private let cellHeaderHeight: CGFloat = 34
+    private let trayHeight: CGFloat = 96
     private var isList: Bool { layoutRaw == "list" }
+
+    // MARK: - Данные
+
+    private func items(for raw: Int) -> [PlannerTask] {
+        raw == 0 ? unsortedTasks : items(for: Quadrant(rawValue: raw) ?? .other)
+    }
 
     private func items(for quadrant: Quadrant) -> [PlannerTask] {
         let today = DayMath.today()
@@ -46,7 +62,34 @@ struct MatrixView: View {
             }
     }
 
+    private func cellStyle(_ raw: Int) -> QuadrantStyle {
+        Quadrant(rawValue: raw)?.style ?? .unsorted
+    }
+
+    private func cellName(_ raw: Int) -> String {
+        Quadrant(rawValue: raw)?.name ?? "Не разобрано"
+    }
+
+    // MARK: - Тело
+
     var body: some View {
+        ZStack {
+            if let raw = expanded {
+                detail(raw)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else {
+                overview
+            }
+            if drag != nil {
+                dropBoard
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: drag != nil)
+        .animation(.easeInOut(duration: 0.22), value: expanded)
+    }
+
+    private var overview: some View {
         VStack(spacing: 0) {
             Picker("Вид матрицы", selection: $layoutRaw) {
                 Text("Матрица").tag("grid")
@@ -55,45 +98,53 @@ struct MatrixView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 14)
             .padding(.bottom, 8)
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 10) {
-                    if isList {
+            if isList {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 10) {
                         ForEach(Quadrant.allCases, id: \.rawValue) { quadrant in
                             section(quadrant)
                         }
-                    } else {
-                        gridLayout
+                        unsortedTray
                     }
-                    unsortedTray
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 16)
+                }
+            } else {
+                GeometryReader { geometry in
+                    gridLayout(height: geometry.size.height)
                 }
                 .padding(.horizontal, 10)
-                .padding(.bottom, 16)
+                .padding(.bottom, 10)
             }
         }
     }
 
-    // MARK: - Матрица 2×2
+    // MARK: - Матрица 2×2 на весь экран
 
-    private var gridLayout: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Color.clear.frame(width: labelWidth, height: 22)
+    private func gridLayout(height: CGFloat) -> some View {
+        let axisHeight: CGFloat = 22
+        let cellHeight = max(120, (height - axisHeight - trayHeight - cellSpacing * 2) / 2)
+        return VStack(spacing: cellSpacing) {
+            HStack(spacing: cellSpacing) {
+                Color.clear.frame(width: labelWidth, height: axisHeight)
                 axisLabel("Срочно")
                 axisLabel("Не срочно")
             }
-            .frame(height: 22)
-            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                GridRow {
-                    rowLabel("Важно")
-                    cell(.urgentImportant)
-                    cell(.important)
-                }
-                GridRow {
-                    rowLabel("Не важно")
-                    cell(.urgent)
-                    cell(.other)
-                }
+            .frame(height: axisHeight)
+            HStack(spacing: cellSpacing) {
+                rowLabel("Важно")
+                cell(.urgentImportant, height: cellHeight)
+                cell(.important, height: cellHeight)
             }
+            .frame(height: cellHeight)
+            HStack(spacing: cellSpacing) {
+                rowLabel("Не важно")
+                cell(.urgent, height: cellHeight)
+                cell(.other, height: cellHeight)
+            }
+            .frame(height: cellHeight)
+            unsortedTray
+                .padding(.leading, labelWidth + cellSpacing)
         }
     }
 
@@ -116,10 +167,13 @@ struct MatrixView: View {
             .frame(maxHeight: .infinity)
     }
 
-    private func cell(_ quadrant: Quadrant) -> some View {
+    /// Клетка фиксированной высоты: заголовок, сколько влезает задач, «+N ещё» вместо последней.
+    private func cell(_ quadrant: Quadrant, height: CGFloat) -> some View {
         let style = quadrant.style
         let list = items(for: quadrant)
-        let hovered = drag?.target == .quadrant(quadrant.rawValue)
+        let slots = max(1, Int((height - cellHeaderHeight - 8) / (rowHeight + 3)))
+        let visible = list.count > slots ? Array(list.prefix(slots - 1)) : list
+        let hidden = list.count - visible.count
         return VStack(spacing: 3) {
             HStack(spacing: 6) {
                 Circle().fill(style.dot).frame(width: 10, height: 10)
@@ -132,11 +186,29 @@ struct MatrixView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(style.dot)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(style.text.opacity(0.6))
             }
             .padding(.horizontal, 10)
-            .frame(height: 34)
-            ForEach(list, id: \.id) { task in
+            .frame(height: cellHeaderHeight)
+            ForEach(visible, id: \.id) { task in
                 compactRow(task, style: style)
+            }
+            if hidden > 0 {
+                Button {
+                    expanded = quadrant.rawValue
+                } label: {
+                    Text("+\(hidden) ещё")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(style.text)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: rowHeight)
+                        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Показать все: " + quadrant.name)
             }
             if list.isEmpty {
                 Text("Пусто — перетащи сюда")
@@ -145,16 +217,22 @@ struct MatrixView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
             }
-            Spacer(minLength: 5)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 5)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(hovered ? Tokens.accent.opacity(0.12) : style.background, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: 1.5))
-        .reportZone("quad-\(quadrant.rawValue)", enabled: drag != nil)
+        .padding(.bottom, 5)
+        .frame(maxWidth: .infinity)
+        .frame(height: height, alignment: .top)
+        .clipped()
+        .background(style.background, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .onTapGesture { expanded = quadrant.rawValue }
         .accessibilityLabel(quadrant.name)
+        .accessibilityAddTraits(.isButton)
     }
 
+    /// Строка в клетке: одна строка названия, под ней когда. Высота фиксированная — ничего не растягивается.
     private func compactRow(_ task: PlannerTask, style: QuadrantStyle) -> some View {
         let today = DayMath.today()
         let overdue = task.isOverdue(today: today)
@@ -163,27 +241,25 @@ struct MatrixView: View {
                 Circle()
                     .strokeBorder(task.style.dot, lineWidth: 2)
                     .frame(width: 16, height: 16)
-                    .frame(width: 34)
-                    .frame(maxHeight: .infinity)
+                    .frame(width: 32, height: rowHeight)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Отметить выполненной: " + task.title)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(task.title)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 13))
                     .foregroundStyle(style.text)
-                    .lineLimit(2)
+                    .lineLimit(1)
                 Text(meta(task))
                     .font(.system(size: 11))
                     .foregroundStyle(overdue ? Tokens.overdue : Tokens.caption)
                     .lineLimit(1)
             }
-            .padding(.vertical, 5)
             Spacer(minLength: 0)
         }
         .padding(.trailing, 6)
-        .frame(minHeight: 46)
+        .frame(height: rowHeight)
         .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 10))
         .opacity(drag?.taskID == task.id ? 0.35 : 1)
         .contentShape(Rectangle())
@@ -191,49 +267,62 @@ struct MatrixView: View {
         .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 
-    // MARK: - Список по приоритету
+    // MARK: - Список по приоритету (секции сворачиваются)
 
     private func section(_ quadrant: Quadrant) -> some View {
         let style = quadrant.style
         let list = items(for: quadrant)
-        let hovered = drag?.target == .quadrant(quadrant.rawValue)
+        let isCollapsed = collapsed.contains(quadrant.rawValue)
         return VStack(spacing: 2) {
-            HStack(spacing: 8) {
-                Circle().fill(style.dot).frame(width: 10, height: 10)
-                Text(quadrant.name)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(style.text)
-                Text("· " + quadrant.label.lowercased())
-                    .font(.system(size: 13))
-                    .foregroundStyle(style.text.opacity(0.7))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Text("\(list.count)")
-                    .font(.system(size: 13, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(style.dot)
+            Button {
+                withAnimation(.spring(duration: 0.28)) {
+                    if isCollapsed { collapsed.remove(quadrant.rawValue) } else { collapsed.insert(quadrant.rawValue) }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Circle().fill(style.dot).frame(width: 10, height: 10)
+                    Text(quadrant.name)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(style.text)
+                    Text("· " + quadrant.label.lowercased())
+                        .font(.system(size: 13))
+                        .foregroundStyle(style.text.opacity(0.7))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("\(list.count)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(style.dot)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(style.text.opacity(0.6))
+                        .rotationEffect(.degrees(isCollapsed ? -90 : 0))
+                }
+                .padding(.horizontal, 12)
+                .frame(height: Tokens.hitTarget)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .frame(height: 40)
-            ForEach(list, id: \.id) { task in
-                wideRow(task, style: style)
+            .buttonStyle(.plain)
+            .accessibilityLabel((isCollapsed ? "Развернуть: " : "Свернуть: ") + quadrant.name)
+            if !isCollapsed {
+                ForEach(list, id: \.id) { task in
+                    wideRow(task, style: style)
+                }
+                if list.isEmpty {
+                    Text("Пусто — перетащи сюда")
+                        .font(.system(size: 13))
+                        .foregroundStyle(style.text.opacity(0.75))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                }
+                Spacer(minLength: 6)
             }
-            if list.isEmpty {
-                Text("Пусто — перетащи сюда")
-                    .font(.system(size: 13))
-                    .foregroundStyle(style.text.opacity(0.75))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
-            }
-            Spacer(minLength: 6)
         }
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, alignment: .top)
-        .background(hovered ? Tokens.accent.opacity(0.12) : style.background, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: 1.5))
-        .reportZone("quad-\(quadrant.rawValue)", enabled: drag != nil)
-        .accessibilityLabel(quadrant.name)
+        .background(style.background, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
     }
 
     private func wideRow(_ task: PlannerTask, style: QuadrantStyle) -> some View {
@@ -281,25 +370,35 @@ struct MatrixView: View {
 
     // MARK: - Не разобрано
 
-    /// Неразобранные задачи: серые, ждут, когда их перетащат в квадрант. Сюда же можно вернуть задачу.
+    /// Полка серых задач без квадранта: шапка как у клеток, под ней фишки в строку. Тап по шапке —
+    /// полный список.
     private var unsortedTray: some View {
         let list = unsortedTasks
-        let hovered = drag?.target == .quadrant(0)
         let style = QuadrantStyle.unsorted
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Circle().fill(style.dot).frame(width: 10, height: 10)
-                Text("Не разобрано")
-                    .font(.system(size: 12.5, weight: .bold))
-                    .foregroundStyle(Tokens.caption)
-                Spacer(minLength: 0)
-                Text("\(list.count)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(Tokens.muted)
+        return VStack(alignment: .leading, spacing: 2) {
+            Button {
+                expanded = 0
+            } label: {
+                HStack(spacing: 6) {
+                    Circle().fill(style.dot).frame(width: 10, height: 10)
+                    Text("Не разобрано")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(style.text)
+                    Spacer(minLength: 0)
+                    Text("\(list.count)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Tokens.caption)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(style.text.opacity(0.6))
+                }
+                .padding(.horizontal, 10)
+                .frame(height: cellHeaderHeight)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Не разобрано — показать все")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(list, id: \.id) { task in
@@ -309,19 +408,18 @@ struct MatrixView: View {
                         Text("Всё разобрано")
                             .font(.system(size: 12.5))
                             .foregroundStyle(Tokens.muted)
-                            .padding(.horizontal, 4)
-                            .frame(height: 44)
+                            .padding(.horizontal, 6)
+                            .frame(height: Tokens.hitTarget)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 6)
             }
+            .frame(height: Tokens.hitTarget + 8)
         }
-        .frame(height: 92)
-        .background(hovered ? Tokens.accent.opacity(0.12) : style.background, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: 1.5))
-        .padding(.leading, isList ? 0 : labelWidth + 8)
-        .reportZone("quad-0", enabled: drag != nil)
+        .frame(height: trayHeight)
+        .frame(maxWidth: .infinity)
+        .background(style.background, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
     }
 
     private func trayChip(_ task: PlannerTask) -> some View {
@@ -337,5 +435,126 @@ struct MatrixView: View {
             .contentShape(Capsule())
             .onTapGesture { onEdit(task) }
             .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
+    }
+
+    // MARK: - Полный список квадранта
+
+    private func detail(_ raw: Int) -> some View {
+        let style = cellStyle(raw)
+        let list = items(for: raw)
+        return VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Button {
+                    expanded = nil
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Tokens.text)
+                        .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Назад к матрице")
+                Circle().fill(style.dot).frame(width: 10, height: 10)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(cellName(raw))
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Tokens.text)
+                    if let quadrant = Quadrant(rawValue: raw) {
+                        Text(quadrant.label)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Tokens.caption)
+                    }
+                }
+                .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(list.count)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(style.dot)
+                    .padding(.trailing, 14)
+            }
+            .frame(height: 52)
+            .padding(.leading, 4)
+            List {
+                ForEach(list, id: \.id) { task in
+                    wideRow(task, style: style)
+                        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if let onDelete {
+                                Button(role: .destructive) { onDelete(task) } label: {
+                                    Label("Удалить", systemImage: "trash")
+                                }
+                            }
+                        }
+                }
+                if list.isEmpty {
+                    Text(raw == 0 ? "Всё разобрано" : "Пусто — перетащи сюда задачу, удерживая её")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Tokens.caption)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 30)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+        .background(style.background.opacity(0.45))
+    }
+
+    // MARK: - Доска для сброса
+
+    /// Пять контейнеров-целей на весь экран: пока задачу держат, бросить можно в любой.
+    private var dropBoard: some View {
+        VStack(spacing: 10) {
+            Text("Куда?")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Tokens.caption)
+                .frame(height: 24)
+            HStack(spacing: 10) {
+                boardCell(.urgentImportant)
+                boardCell(.important)
+            }
+            HStack(spacing: 10) {
+                boardCell(.urgent)
+                boardCell(.other)
+            }
+            boardTarget(raw: 0, title: "Не разобрано", subtitle: "разберу позже", style: .unsorted)
+                .frame(height: 76)
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Tokens.background.opacity(0.94))
+        .allowsHitTesting(false)
+    }
+
+    private func boardCell(_ quadrant: Quadrant) -> some View {
+        boardTarget(raw: quadrant.rawValue, title: quadrant.name, subtitle: quadrant.label, style: quadrant.style)
+    }
+
+    private func boardTarget(raw: Int, title: String, subtitle: String, style: QuadrantStyle) -> some View {
+        let hovered = drag?.target == .quadrant(raw)
+        let count = items(for: raw).count
+        return VStack(spacing: 6) {
+            Circle().fill(style.dot).frame(width: 14, height: 14)
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(style.text)
+                .multilineTextAlignment(.center)
+            Text(subtitle + " · \(count)")
+                .font(.system(size: 12))
+                .foregroundStyle(style.text.opacity(0.7))
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(hovered ? Tokens.accent.opacity(0.18) : style.background, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: hovered ? 2.5 : 1.5))
+        .scaleEffect(hovered ? 1.02 : 1)
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .reportZone("quad-\(raw)", enabled: drag != nil)
     }
 }

@@ -187,7 +187,7 @@ struct PlannerScreen: View {
                     }
                 )
             case .matrix:
-                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled)
+                MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled)
             case .weekList:
                 WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled)
             }
