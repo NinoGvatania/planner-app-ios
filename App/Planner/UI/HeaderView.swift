@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ViewMode: String, CaseIterable, Identifiable {
-    case day, week, weekList, month, matrix
+    case day, week, weekList, month, matrix, projects
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum ViewMode: String, CaseIterable, Identifiable {
         case .weekList: return "Неделя списком"
         case .month: return "Месяц"
         case .matrix: return "Матрица Эйзенхауэра"
+        case .projects: return "Проекты"
         }
     }
 
@@ -22,6 +23,7 @@ enum ViewMode: String, CaseIterable, Identifiable {
         case .weekList: return "list.bullet"
         case .month: return "calendar"
         case .matrix: return "square.grid.2x2"
+        case .projects: return "folder"
         }
     }
 }

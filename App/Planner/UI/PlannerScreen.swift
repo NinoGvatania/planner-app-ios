@@ -74,6 +74,7 @@ struct PlannerScreen: View {
         case .weekList: return rangeTitle(from: 0, to: 6)
         case .month: return DayMath.monthNominative[DayMath.monthIndex(monthAnchor)] + " \(DayMath.year(monthAnchor))"
         case .matrix: return "Матрица"
+        case .projects: return "Проекты"
         }
     }
 
@@ -92,6 +93,9 @@ struct PlannerScreen: View {
         case .matrix:
             let n = tasks.filter { !$0.isDone && !$0.isRoutine }.count
             return "\(n) " + DayMath.plural(n, "открытая задача", "открытые задачи", "открытых задач")
+        case .projects:
+            let n = tasks.filter { !$0.isDone && !$0.isRoutine && $0.project != nil }.count
+            return "\(n) " + DayMath.plural(n, "задача", "задачи", "задач") + " в проектах"
         }
     }
 
@@ -151,7 +155,7 @@ struct PlannerScreen: View {
                 onToday: {
                     withAnimation {
                         dayOffset = 0
-                        if mode == .matrix || mode == .weekList {
+                        if mode == .matrix || mode == .weekList || mode == .projects {
                             mode = .day
                             navStack = []
                         }
@@ -221,6 +225,8 @@ struct PlannerScreen: View {
                 MatrixView(tasks: tasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled)
             case .weekList:
                 WeekListView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled)
+            case .projects:
+                ProjectsView(tasks: visibleTasks, drag: drag, onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded, onEdit: { editingTask = $0 }, onManageProjects: { showProjects = true }, onDragCancelled: dragCancelled)
             }
 
             BacklogDrawerView(
@@ -475,6 +481,8 @@ struct PlannerScreen: View {
             return "В бэклог"
         case .quadrant(let raw):
             return Quadrant(rawValue: raw)?.name ?? "Не разобрано"
+        case .project(let name):
+            return name.map { "В проект «\($0)»" } ?? "Без проекта"
         case nil:
             return "Тащи на нужное время"
         }
@@ -546,6 +554,10 @@ struct PlannerScreen: View {
             guard raw != task.quadrantRaw else { return }
             task.quadrantRaw = raw
             showToast("«\(task.title)» → " + (Quadrant(rawValue: raw)?.name.lowercased() ?? "не разобрано"))
+        case .project(let name):
+            guard task.project?.name != name else { return }
+            task.project = name.map { findOrCreateProject(named: $0) }
+            showToast("«\(task.title)» → " + (name.map { "проект «\($0)»" } ?? "без проекта"))
         }
         NotificationScheduler.sync(tasks)
     }
@@ -554,6 +566,10 @@ struct PlannerScreen: View {
         if let drawer = zones["drawer"], drawer.contains(point) { return .backlog }
         for raw in 0...4 {
             if let cell = zones["quad-\(raw)"], cell.contains(point) { return .quadrant(raw) }
+        }
+        for (key, rect) in zones where key.hasPrefix("project-") && rect.contains(point) {
+            let name = String(key.dropFirst("project-".count))
+            return .project(name.isEmpty ? nil : name)
         }
         for (key, rect) in zones where key.hasPrefix("tab-") && rect.contains(point) {
             if let offset = Int(key.dropFirst(4)) { return .dayTab(offset: offset) }

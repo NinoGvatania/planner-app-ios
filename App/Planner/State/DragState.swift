@@ -8,6 +8,8 @@ enum DropTarget: Equatable {
     case allDay(day: Int)
     case grid(day: Int, start: Int)
     case quadrant(Int)
+    /// Проект по названию; `nil` — «Без проекта».
+    case project(String?)
 }
 
 /// Текущее перетаскивание: что тянем и где палец (в координатах экрана «planner»).
