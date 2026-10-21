@@ -19,7 +19,8 @@ enum TaskExtractor {
         guard !text.isEmpty else { return ([], .rules(reason: nil)) }
         guard case .available = OnDeviceExtractor.status else { return (byRules(text), .rules(reason: nil)) }
         do {
-            let drafts = dedupe(try await OnDeviceExtractor.extract(text))
+            let raw = try await OnDeviceExtractor.extract(text)
+            let drafts = dedupe(raw)
             guard !drafts.isEmpty else { return (byRules(text), .rules(reason: "Apple Intelligence не нашёл задач — разобрано правилами")) }
             return (drafts, .model)
         } catch {
