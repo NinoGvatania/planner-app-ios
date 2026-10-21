@@ -8,6 +8,7 @@ struct SettingsSheet: View {
     @State private var apiKey = ""
     @State private var saved = false
     @AppStorage(TaskExtractor.modelKey) private var model = TaskExtractor.defaultModel
+    @AppStorage(NotificationScheduler.leadKey) private var reminderLead = 0
     @AppStorage(CalendarSync.enabledKey) private var calendarExport = false
     @AppStorage(CalendarSync.calendarKey) private var calendarID = ""
     @State private var calendarAccess = CalendarSync.hasAccess
@@ -18,6 +19,13 @@ struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Напоминания о задачах") {
+                    Picker("Напоминать", selection: $reminderLead) {
+                        ForEach(NotificationScheduler.leadOptions, id: \.minutes) { option in
+                            Text(option.title).tag(option.minutes)
+                        }
+                    }
+                }
                 calendarSection
                 Section {
                     SecureField("sk-ant-…", text: $apiKey)
@@ -90,6 +98,7 @@ struct SettingsSheet: View {
         .onChange(of: calendarID) { _, _ in
             Task { await syncCalendarNow() }
         }
+        .onChange(of: reminderLead) { _, _ in NotificationScheduler.sync(tasks) }
     }
 
     // MARK: - Календарь
@@ -114,7 +123,7 @@ struct SettingsSheet: View {
                             .foregroundStyle(Tokens.caption)
                     }
                 } else if calendarDenied {
-                    Text("Нет доступа к Календарю. Разреши полный доступ: Настройки iOS → Планировщик → Календари.")
+                    Text("Нет доступа к Календарю. Разреши полный доступ: Настройки iOS → Quick → Календари.")
                         .font(.footnote)
                         .foregroundStyle(Tokens.overdue)
                 } else {

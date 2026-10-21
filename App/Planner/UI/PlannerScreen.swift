@@ -32,6 +32,7 @@ struct PlannerScreen: View {
     @State private var scrollToNowRequest = 0
     @State private var showProjects = false
     @State private var showSettings = false
+    @State private var showStreak = false
     /// Откуда пришли в текущий вид (месяц → день, неделя → день): кнопка «назад» ведёт обратно.
     @State private var navStack: [ViewMode] = []
     /// Горизонтальный сдвиг сетки дня при свайпе между днями.
@@ -247,7 +248,9 @@ struct PlannerScreen: View {
                 onEdit: { editingTask = $0 },
                 onDelete: deleteTask,
                 maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - (mode == .day ? 64 : 0) - 24) : .infinity,
-                onDragCancelled: dragCancelled
+                onDragCancelled: dragCancelled,
+                streak: streakInfo.current,
+                onStreak: { showStreak = true }
             )
         }
         .coordinateSpace(name: "planner")
@@ -298,6 +301,9 @@ struct PlannerScreen: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsSheet()
+        }
+        .sheet(isPresented: $showStreak) {
+            StreakSheet(info: streakInfo)
         }
         .sheet(item: $editingTask) { task in
             TaskEditSheet(
@@ -429,7 +435,7 @@ struct PlannerScreen: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, toast.actionTitle == nil ? 10 : 2)
-            .background(Tokens.badge, in: RoundedRectangle(cornerRadius: 14))
+            .glassEffect(.regular.tint(Tokens.badge.opacity(0.7)), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
             .shadow(color: Color.black.opacity(0.4), radius: 12, y: 8)
             .padding(.horizontal, 16)
@@ -615,12 +621,21 @@ struct PlannerScreen: View {
 
     // MARK: - Действия
 
+    private var streakInfo: Streak.Info { Streak.compute(tasks) }
+
     private func toggleDone(_ task: PlannerTask) {
+        let firstToday = !task.isDone && !streakInfo.todayClosed
         task.isDone.toggle()
         task.completedAt = task.isDone ? Date() : nil
         if task.isDone {
+            // Первая задача за день продлевает серию — говорим об этом в тосте.
+            var message = "Готово: «\(task.title)»"
+            if firstToday {
+                let streak = Streak.compute(tasks).current
+                message += " · 🔥 серия \(streak) " + DayMath.plural(streak, "день", "дня", "дней")
+            }
             // Промахнулся — «Отменить» в тосте возвращает задачу в работу.
-            showToast("Готово: «\(task.title)»", actionTitle: "Отменить", duration: 4.5) {
+            showToast(message, actionTitle: "Отменить", duration: 4.5) {
                 task.isDone = false
                 task.completedAt = nil
             }

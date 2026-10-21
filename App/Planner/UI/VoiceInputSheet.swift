@@ -166,7 +166,7 @@ struct VoiceInputSheet: View {
         VStack(spacing: 10) {
             Text(statusText)
                 .font(.system(size: 16, weight: .semibold))
-            Text(recorder.status == .denied ? "Разреши в Настройках → Планировщик" : (recorder.isListening ? "Нажми паузу, чтобы поправить текст, или галочку, чтобы разобрать" : "Микрофон — продолжить, галочка — разобрать"))
+            Text(recorder.status == .denied ? "Разреши в Настройках → Quick" : (recorder.isListening ? "Нажми паузу, чтобы поправить текст, или галочку, чтобы разобрать" : "Микрофон — продолжить, галочка — разобрать"))
                 .font(.system(size: 13))
                 .foregroundStyle(Tokens.caption)
                 .multilineTextAlignment(.center)

@@ -21,6 +21,9 @@ struct BacklogDrawerView: View {
     /// Сколько высоты экрана панель может занять (с клавиатурой — меньше).
     var maxHeight: CGFloat = .infinity
     var onDragCancelled: (() -> Void)? = nil
+    /// Серия дней подряд (огонёк в заголовке) и что делать по тапу на неё.
+    var streak: Int = 0
+    var onStreak: (() -> Void)? = nil
 
     /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
     @State private var dragDelta: CGFloat = 0
@@ -124,6 +127,24 @@ struct BacklogDrawerView: View {
                         .frame(minWidth: 22, minHeight: 22)
                         .padding(.horizontal, 3)
                         .background(Tokens.badge, in: Capsule())
+                    if let onStreak {
+                        Button(action: onStreak) {
+                            HStack(spacing: 3) {
+                                Image(systemName: streak > 0 ? "flame.fill" : "flame")
+                                    .font(.system(size: 13, weight: .bold))
+                                Text("\(streak)")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .monospacedDigit()
+                            }
+                            .foregroundStyle(streak > 0 ? Color(hex: 0xFF9F43) : Tokens.muted)
+                            .padding(.horizontal, 8)
+                            .frame(height: 26)
+                            .background(Tokens.badge, in: Capsule())
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Серия: \(streak) дней подряд")
+                    }
                 }
                 Spacer()
                 if let hint = hint {
@@ -287,7 +308,7 @@ struct BacklogDrawerView: View {
                     Image(systemName: "mic.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
-                        .background(Tokens.accent, in: Circle())
+                        .glassEffect(.regular.tint(Tokens.accent).interactive(), in: Circle())
                         .foregroundStyle(Tokens.onAccent)
                 }
                 .accessibilityLabel("Голосовой ввод")
@@ -296,7 +317,7 @@ struct BacklogDrawerView: View {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 18, weight: .bold))
                         .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
-                        .background(Tokens.accent, in: Circle())
+                        .glassEffect(.regular.tint(Tokens.accent).interactive(), in: Circle())
                         .foregroundStyle(Tokens.onAccent)
                 }
                 .accessibilityLabel("Добавить задачу")

@@ -110,7 +110,7 @@ struct HeaderView: View {
                     .padding(.leading, 12)
                     .padding(.trailing, 9)
                     .frame(height: Tokens.hitTarget)
-                    .background(Tokens.overdueChip, in: Capsule())
+                    .glassEffect(.regular.tint(Tokens.overdueChip.opacity(0.85)).interactive(), in: Capsule())
                     .foregroundStyle(Tokens.overdue)
                 }
                 .accessibilityLabel("Просрочено: \(overdueCount)")
@@ -143,7 +143,7 @@ struct HeaderView: View {
                 .accessibilityLabel("К сегодняшнему дню")
             }
             .padding(2)
-            .background(Tokens.cluster, in: Capsule())
+            .glassEffect(.regular.tint(Tokens.cluster.opacity(0.6)), in: Capsule())
             .foregroundStyle(Tokens.text)
         }
         .padding(.leading, backTitle == nil ? 18 : 8)
