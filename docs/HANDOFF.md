@@ -30,8 +30,8 @@
   (сетка на 1 или 7 дней; `live`/`syncTick` для соседних страниц), `MonthView` (один месяц; удержание
   создаёт, чипы тянутся), `YearView`, `PeriodListView` (список за период), `MatrixView` (2×2 на экран,
   проваливание, доска целей), `ProjectsView`, `DashboardView` (Swift Charts), `BacklogDrawerView`,
-  `TaskEditSheet`, `VoiceInputSheet`, `DraftEditSheet`, `OverdueSheet`, `SettingsSheet`, `StreakSheet`,
-  `HeaderView` (`Period`, `Display`; заголовок‑меню периода, кнопка режима, «…», серия, «к сегодня»),
+  `TaskRowView` (единая строка бэклога и «Просрочено»), `TaskEditSheet`, `VoiceInputSheet`, `DraftEditSheet`, `OverdueSheet`, `SettingsSheet`, `StreakSheet`,
+  `HeaderView` (`Period`, `Display`; заголовок‑меню периода, серия, кнопка режима, «…», «к сегодня»; «Просрочено» — в заголовке бэклога),
   `WeekStripView` (пейджер недель), `TaskBlockView`, `Tokens`.
 - `App/QuickWidget/` — расширение‑виджет «Сегодня» (своя цель `QuickWidget` в `project.pbxproj`, читает
   `WidgetSnapshot` из контейнера группы `group.com.ninogvatania.planner`; App Groups прописаны
