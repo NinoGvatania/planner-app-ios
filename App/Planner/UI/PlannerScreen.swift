@@ -31,6 +31,7 @@ struct PlannerScreen: View {
     @State private var gridScroll = GridScroll()
     @State private var scrollToNowRequest = 0
     @State private var showProjects = false
+    @State private var showSettings = false
     @AppStorage("colorMode") private var colorModeRaw = ColorMode.quadrant.rawValue
 
     private let gridTopInset: CGFloat = 10
@@ -138,7 +139,8 @@ struct PlannerScreen: View {
                     }
                     scrollToNowRequest += 1
                 },
-                onProjects: { showProjects = true }
+                onProjects: { showProjects = true },
+                onSettings: { showSettings = true }
             )
 
             switch mode {
@@ -249,6 +251,9 @@ struct PlannerScreen: View {
         }
         .sheet(isPresented: $showProjects) {
             ProjectsSheet()
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsSheet()
         }
         .sheet(item: $editingTask) { task in
             TaskEditSheet(

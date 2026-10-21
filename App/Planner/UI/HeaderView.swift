@@ -38,6 +38,7 @@ struct HeaderView: View {
     let onOverdue: () -> Void
     let onToday: () -> Void
     let onProjects: () -> Void
+    let onSettings: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -89,6 +90,7 @@ struct HeaderView: View {
                         }
                     }
                     Button("Проекты…", systemImage: "folder", action: onProjects)
+                    Button("Настройки…", systemImage: "gearshape", action: onSettings)
                     Divider()
                     Text("Сборка \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
                 } label: {
