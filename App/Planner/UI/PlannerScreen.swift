@@ -396,12 +396,12 @@ struct PlannerScreen: View {
                     period = .day
                 }
             },
+            live: live,
+            syncTick: tick,
             scroll: gridScroll,
             onAutoScrollTick: refreshDropTarget,
             scrollToNowRequest: scrollToNowRequest,
-            onDragCancelled: dragCancelled,
-            live: live,
-            syncTick: tick
+            onDragCancelled: dragCancelled
         )
     }
 

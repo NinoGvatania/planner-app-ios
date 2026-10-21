@@ -30,15 +30,16 @@ final class DictationSplitterTests: XCTestCase {
         XCTAssertEqual(DictationSplitter.split("Ещё купить батарейки"), ["купить батарейки"])
         XCTAssertEqual(DictationSplitter.split("Купить ещё молока"), ["Купить ещё молока"])
         XCTAssertEqual(DictationSplitter.split("Посмотреть второе видео"), ["Посмотреть второе видео"])
-        XCTAssertEqual(DictationSplitter.split("первое позвонить маме, второе купить хлеб"), ["первое позвонить маме", "купить хлеб"])
+        XCTAssertEqual(DictationSplitter.split("первое позвонить маме, второе купить хлеб"), ["позвонить маме", "купить хлеб"])
         XCTAssertEqual(DictationSplitter.split("позвонить маме точка купить хлеб следующая записаться к врачу"),
                        ["позвонить маме", "купить хлеб", "записаться к врачу"])
     }
 
     func testOrdinalsInTheMiddle() {
+        // «первая» в начале снимает жёсткая связка, «вторая» посреди фразы делит, потому что дальше глагол.
         XCTAssertEqual(
             DictationSplitter.split("первая задача любить Дашу вторая задача гладить кота"),
-            ["первая задача любить Дашу", "вторая задача гладить кота"]
+            ["задача любить Дашу", "вторая задача гладить кота"]
         )
         XCTAssertEqual(
             DictationSplitter.split("так мне нужно будет сделать следующие вещи первое нужно будет почистить зубы второе покормить животных последнее доработать предложение надо отправить им информацию"),

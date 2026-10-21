@@ -6,7 +6,8 @@ final class SpeechCleanupTests: XCTestCase {
         XCTAssertEqual(SpeechCleanup.clean("ну мне нужно короче позвонить маме"), "Позвонить маме")
         XCTAssertEqual(SpeechCleanup.clean("Мне нужно съездить на Савеловский потом"), "Съездить на Савеловский потом")
         XCTAssertEqual(SpeechCleanup.clean("типа как бы купить хлеб блин"), "Купить хлеб")
-        XCTAssertEqual(SpeechCleanup.clean("Первая задача задача задача"), "Первая задача")
+        XCTAssertEqual(SpeechCleanup.clean("Первая задача позвонить маме маме"), "Позвонить маме")
+        XCTAssertEqual(SpeechCleanup.clean("Первая задача задача задача"), "")
     }
 
     func testKeepsContent() {
