@@ -77,7 +77,7 @@ enum CalendarSync {
     /// Экспорт выключили: убрать свои события из календаря (чужие не трогаем).
     static func clear() async {
         pending?.cancel()
-        await Task.detached(priority: .userInitiated) {
+        _ = await Task.detached(priority: .userInitiated) {
             sync([])
         }.value
     }

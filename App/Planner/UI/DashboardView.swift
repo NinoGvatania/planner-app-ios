@@ -142,7 +142,7 @@ struct DashboardView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(shift == 0)
+                .allowsHitTesting(shift != 0)
                 .accessibilityLabel(shift == 0 ? rangeTitle : rangeTitle + ". Вернуться к текущему периоду")
                 periodButton("chevron.right", label: "Следующий период") { shift += 1 }
             }
