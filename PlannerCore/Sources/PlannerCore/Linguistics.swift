@@ -6,6 +6,12 @@ import Foundation
 public protocol Linguistics {
     /// Слово — глагол (любая форма: «позвонить», «позвони», «купил»)?
     func isVerb(_ word: String) -> Bool
+    /// Слово — существительное («запчасти», «сладости»: похожи на инфинитив, но не действие)?
+    func isNoun(_ word: String) -> Bool
+}
+
+public extension Linguistics {
+    func isNoun(_ word: String) -> Bool { false }
 }
 
 extension DictationSplitter {

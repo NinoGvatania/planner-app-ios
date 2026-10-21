@@ -25,7 +25,7 @@ public enum SpeechCleanup {
         "четвертое", "пятое", "шестое", "последнее", "следующее", "во-первых", "во-вторых", "в-третьих",
         "сделать следующие вещи", "сделать следующее", "следующие вещи", "следующие задачи", "вот что",
         "так вот", "так", "итак", "значит", "короче", "мне нужно будет сделать", "нужно сделать", "надо сделать",
-        "записать", "запиши", "добавь", "добавить задачу", "добавь задачу",
+        "добавить задачу", "добавь задачу", "запиши задачу", "записать задачу", "запиши что",
     ]
 
     /// Реплики, из которых задачи не бывает: приветствия, «как дела», «всё», «хватит».
@@ -35,7 +35,7 @@ public enum SpeechCleanup {
     ]
 
     /// Хвосты, которые остаются от связок: «… и», «… а», «… потом», «… чтобы».
-    public static let trailingJunk: [String] = ["и", "а", "потом", "затем", "ну", "вот", "как бы", "чтобы", "чтоб", "это"]
+    public static let trailingJunk: [String] = ["и", "а", "потом", "затем", "ну", "вот", "как бы", "чтобы", "чтоб"]
 
     /// Подчистить готовое название: убрать хвосты-связки, двойные пробелы, точку в конце, заглавная буква.
     public static func tidyTitle(_ title: String) -> String {
@@ -60,7 +60,8 @@ public enum SpeechCleanup {
         while stripped {
             stripped = false
             for lead in leadIns.sorted(by: { $0.count > $1.count }) {
-                let pattern = "^" + NSRegularExpression.escapedPattern(for: lead) + "(?=\\s|$)"
+                // «ещё раз проверить» — не вводное, а часть задачи.
+                let pattern = "^" + NSRegularExpression.escapedPattern(for: lead) + "(?!\\s+раз(?![а-яё]))(?=\\s|$)"
                 if let range = result.range(of: pattern, options: [.regularExpression, .caseInsensitive]) {
                     result = String(result[range.upperBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " ,:-–—"))
                     stripped = true

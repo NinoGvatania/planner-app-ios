@@ -153,6 +153,10 @@ struct DayTimelineView: View {
             // Начался свайп между днями: соседняя страница встаёт на ту же прокрутку, что и средняя.
             if !live { scrollPosition.scrollTo(y: scroll.offset) }
         }
+        .onChange(of: days) { _, _ in
+            // Другой день на той же странице пейджера: панель без времени начинает свёрнутой.
+            allDayExpanded = false
+        }
         .onDisappear { stopAutoScroll() }
     }
 
@@ -329,7 +333,7 @@ struct DayTimelineView: View {
     private var allDayBadge: some View {
         let total = allDayTotal
         let hidden = allDayHidden
-        let active = hidden > 0 || allDayExpanded
+        let active = total > 0 && (hidden > 0 || allDayExpanded)
         return Button {
             withAnimation(.easeOut(duration: 0.2)) { allDayExpanded.toggle() }
         } label: {

@@ -32,7 +32,21 @@ public enum DictationSplitter {
     static let markerSkip: Set<String> = [
         "задача", "задание", "дело", "пункт", "вещь", "момент", "нужно", "надо", "будет", "бы", "мне", "не",
         "забыть", "обязательно", "это", "значит", "короче", "ну", "вот", "ещё", "еще", "также", "потом", "затем",
-        "и", "а", "что",
+        "и", "а",
+    ]
+
+    /// С этих слов начинается придаточное, а не новая задача: «сказать, что приеду», «узнать, когда…».
+    static let subordinators: Set<String> = [
+        "что", "чтобы", "чтоб", "когда", "если", "который", "которая", "которые", "которое", "которую", "где",
+        "куда", "как", "ли", "пока", "хотя", "откуда", "зачем", "почему", "кто", "чего", "чем", "потому", "так",
+        "сколько", "какой", "какая", "какие", "какое",
+    ]
+
+    /// Если кусок кончается на вопросительное или относительное слово, «надо/нужно» после него —
+    /// часть придаточного («узнать, что нужно принести»), а не новая задача.
+    static let relatives: Set<String> = [
+        "что", "ли", "как", "сколько", "кто", "где", "когда", "куда", "зачем", "почему", "чего", "чем", "кого",
+        "кому", "который", "которые", "которую", "какой", "какие",
     ]
 
     /// Вводные посреди фразы, за которыми начинается новое действие: «доработать текст надо отправить его».
@@ -102,11 +116,14 @@ public enum DictationSplitter {
         return pieces
     }
 
-    /// Слово — действие: глагол по окончанию или по части речи от платформы.
+    /// Слово — действие: глагол по окончанию или по части речи от платформы. Если платформа
+    /// считает слово существительным, окончание не спасает («запчасти», «кисть»).
     static func isActionWord(_ word: String, _ linguistics: Linguistics?) -> Bool {
         guard !notVerbs.contains(word) else { return false }
-        if hasVerb(word) { return true }
-        return linguistics?.isVerb(word) ?? false
+        let looksLikeInfinitive = hasVerb(word)
+        guard let linguistics else { return looksLikeInfinitive }
+        if linguistics.isVerb(word) { return true }
+        return looksLikeInfinitive && !linguistics.isNoun(word)
     }
 
     // MARK: - Жёсткие связки
@@ -152,7 +169,7 @@ public enum DictationSplitter {
         while index + 1 < segments.count {
             let separator = segments[index].separator
             let next = segments[index + 1].text
-            if hasAction(current, linguistics) && hasAction(next, linguistics) {
+            if hasAction(current, linguistics) && startsWithAction(next, linguistics) && !endsWithRelative(current) {
                 pieces.append(current)
                 current = next
             } else {
@@ -164,19 +181,32 @@ public enum DictationSplitter {
         return pieces
     }
 
+    /// Инфинитив по окончанию: «-ть/-ться/-чь/-чься» и закрытый набор на «-ти» («уйти», «принести»,
+    /// «вывезти»…). Существительные вроде «запчасти», «сладости», «новости» сюда не попадают.
     private static let verbPattern = try! NSRegularExpression(
-        pattern: "(?<![а-яё])[а-яё]{2,}(?:ть|ти|чь|ться|тись|чься)(?![а-яё])"
+        pattern: "(?<![а-яё])(?:[а-яё]{2,}(?:ть|ться|чь|чься)|[а-яё]*(?:йти|нести|везти|вести|расти|идти|ползти|трясти|грести|плести|мести|цвести|брести))(?![а-яё])"
     )
 
     /// Есть ли в куске действие: глагол в неопределённой форме по окончанию, а с лингвистикой —
     /// любой глагол по части речи («купи», «позвони»). Числительные и существительные на «-ть» не в счёт.
     static func hasAction(_ text: String, _ linguistics: Linguistics?) -> Bool {
-        if hasVerb(text) { return true }
-        guard let linguistics else { return false }
-        return words(in: text).contains { word in
-            let low = word.lowercased()
-            return !notVerbs.contains(low) && linguistics.isVerb(low)
-        }
+        words(in: text).contains { isActionWord($0.lowercased(), linguistics) }
+    }
+
+    /// Правая часть начинается с действия (после «задача», «нужно», «мне»…), а не с придаточного
+    /// («что приеду», «когда будет время»).
+    static func startsWithAction(_ text: String, _ linguistics: Linguistics?) -> Bool {
+        let list = words(in: text).map { $0.lowercased() }
+        var index = 0
+        while index < list.count, index < 4, markerSkip.contains(list[index]) { index += 1 }
+        guard index < list.count else { return false }
+        if subordinators.contains(list[index]) { return false }
+        return isActionWord(list[index], linguistics)
+    }
+
+    static func endsWithRelative(_ text: String) -> Bool {
+        guard let last = words(in: text).last?.lowercased() else { return false }
+        return relatives.contains(last)
     }
 
     /// Есть ли глагол в неопределённой форме: «позвонить», «купить», «записаться», «помочь».

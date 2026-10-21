@@ -51,6 +51,26 @@ final class DictationSplitterTests: XCTestCase {
         XCTAssertEqual(DictationSplitter.split("купить хлеб надо бы ещё"), ["купить хлеб надо бы ещё"])
     }
 
+    func testSubordinateClausesStayTogether() {
+        XCTAssertEqual(DictationSplitter.split("Узнать, что нужно принести на собрание"), ["Узнать, что нужно принести на собрание"])
+        XCTAssertEqual(DictationSplitter.split("Позвонить маме, сказать, что приеду в субботу"),
+                       ["Позвонить маме", "сказать, что приеду в субботу"])
+        XCTAssertEqual(DictationSplitter.split("Купить хлеб и запчасти для машины"), ["Купить хлеб и запчасти для машины"])
+        XCTAssertEqual(DictationSplitter.split("Купить фрукты и сладости"), ["Купить фрукты и сладости"])
+        XCTAssertEqual(DictationSplitter.split("сходить в магазин и уйти домой"), ["сходить в магазин", "уйти домой"])
+        XCTAssertEqual(DictationSplitter.split("спросить, когда будет готово"), ["спросить, когда будет готово"])
+        // Платформа говорит «существительное» — окончание на «-ть» не делает слово действием.
+        let nouns = NounAwareLinguistics(verbs: ["купить"], nouns: ["кисть"])
+        XCTAssertEqual(DictationSplitter.split("купить краску и кисть", linguistics: nouns), ["купить краску и кисть"])
+    }
+
+    private struct NounAwareLinguistics: Linguistics {
+        let verbs: Set<String>
+        let nouns: Set<String>
+        func isVerb(_ word: String) -> Bool { verbs.contains(word) }
+        func isNoun(_ word: String) -> Bool { nouns.contains(word) }
+    }
+
     /// Лингвистика платформы: глаголы узнаются по части речи, а не только по «-ть».
     private struct FakeLinguistics: Linguistics {
         let verbs: Set<String>

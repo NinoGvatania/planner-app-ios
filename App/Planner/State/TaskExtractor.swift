@@ -178,7 +178,8 @@ enum OnDeviceExtractor {
             start = ClockGrid.snapped(parts[0] * 60 + parts[1])
         }
         if start != nil, dayOffset == nil { dayOffset = 0 }
-        let duration = max(15, min(8 * 60, ClockGrid.snapped(task.durationMinutes > 0 ? task.durationMinutes : 30)))
+        var duration = max(15, min(8 * 60, ClockGrid.snapped(task.durationMinutes > 0 ? task.durationMinutes : 30)))
+        if let start { duration = max(15, min(duration, ClockGrid.dayEnd - start)) }
         var quadrant: Quadrant?
         if task.important != 0 || task.urgent != 0 {
             quadrant = Quadrant(important: task.important > 0, urgent: task.urgent > 0)

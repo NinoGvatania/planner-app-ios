@@ -96,11 +96,12 @@ struct HeaderView: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(Tokens.caption)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                        .minimumScaleFactor(0.75)
                 }
                 .frame(maxWidth: .infinity, minHeight: Tokens.hitTarget, alignment: .leading)
                 .contentShape(Rectangle())
             }
+            .layoutPriority(1)
             .accessibilityLabel("Период: \(period.title). Выбрать другой")
 
             if overdueCount > 0 {

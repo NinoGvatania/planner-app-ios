@@ -31,6 +31,7 @@ struct PlannerScreen: View {
     @State private var newTitle = ""
     @State private var rootSize: CGSize = .zero
     @State private var gridScroll = GridScroll()
+    @State private var pagingLock = PagingLock()
     @State private var scrollToNowRequest = 0
     @State private var showProjects = false
     @State private var showSettings = false
@@ -152,8 +153,7 @@ struct PlannerScreen: View {
         case .month: scope = "Месяц"
         case .year: scope = "Год"
         }
-        let modeNote = display == .calendar ? "" : " · " + display.title.lowercased()
-        return scope + " · " + count + modeNote
+        return scope + " · " + count
     }
 
     /// «20–22 окт» или «30 окт – 1 ноя».
@@ -220,7 +220,7 @@ struct PlannerScreen: View {
             // Все виды листаются одинаково: соседние периоды отрисованы рядом, страница едет за пальцем.
             PagerView(
                 index: periodIndex,
-                blocked: { drag != nil || gridScroll.interacting },
+                blocked: { drag != nil || gridScroll.interacting || pagingLock.locked },
                 cancelWhen: drag != nil,
                 hintKey: display == .calendar && period == .month ? "month" : nil
             ) { index, live, tick in
@@ -323,6 +323,7 @@ struct PlannerScreen: View {
         case .calendar:
             switch period {
             case .day:
+                // Сетке дня нельзя менять идентичность: «пружина» на вкладке подменяет день посреди переноса.
                 timeline(days: [index], live: live, tick: tick)
             case .week:
                 let first = baseMonday + index * 7
@@ -345,6 +346,7 @@ struct PlannerScreen: View {
                     onDragEnded: dragEnded,
                     onDragCancelled: dragCancelled
                 )
+                .id(index)
             case .year:
                 YearView(year: DayMath.year(range.start), tasks: visibleTasks) { start in
                     withAnimation(.easeOut(duration: 0.2)) {
@@ -352,19 +354,25 @@ struct PlannerScreen: View {
                         period = .month
                     }
                 }
+                .id(index)
             }
         case .list:
+            // `.id(index)`: страница другого периода начинает со свежим состоянием (свёрнутые секции,
+            // открытый квадрант), а не наследует его от подменённой.
             PeriodListView(
                 tasks: visibleTasks, range: range, period: period, drag: drag, live: live,
                 onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
                 onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled
             )
+            .id(index)
         case .matrix:
             MatrixView(
                 tasks: filtered(tasks, in: range, includingBacklog: true), drag: drag,
                 onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
-                onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled, live: live
+                onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled,
+                live: live, lock: pagingLock
             )
+            .id(index)
         case .projects:
             ProjectsView(
                 tasks: filtered(visibleTasks, in: range, includingBacklog: true), drag: drag,
@@ -372,8 +380,10 @@ struct PlannerScreen: View {
                 onEdit: { editingTask = $0 }, onManageProjects: { showProjects = true },
                 onDragCancelled: dragCancelled, live: live
             )
+            .id(index)
         case .chart:
             DashboardView(tasks: filtered(tasks, in: range), onOpenProjects: { showProjects = true })
+                .id(index)
         }
     }
 

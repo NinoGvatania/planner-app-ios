@@ -12,10 +12,18 @@ struct AppleLinguistics: Linguistics {
     func isVerb(_ word: String) -> Bool {
         let low = word.lowercased()
         guard low.count >= 3, !Self.exceptions.contains(low) else { return false }
+        return tag(of: low) == .verb
+    }
+
+    func isNoun(_ word: String) -> Bool {
+        tag(of: word.lowercased()) == .noun
+    }
+
+    private func tag(of word: String) -> NLTag? {
         let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = low
-        tagger.setLanguage(.russian, range: low.startIndex..<low.endIndex)
-        let (tag, _) = tagger.tag(at: low.startIndex, unit: .word, scheme: .lexicalClass)
-        return tag == .verb
+        tagger.string = word
+        tagger.setLanguage(.russian, range: word.startIndex..<word.endIndex)
+        let (tag, _) = tagger.tag(at: word.startIndex, unit: .word, scheme: .lexicalClass)
+        return tag
     }
 }

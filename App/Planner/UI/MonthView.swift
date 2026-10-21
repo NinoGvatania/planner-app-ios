@@ -102,10 +102,10 @@ struct MonthView: View {
         let today = offset == 0
         let weekend = DayMath.weekdayIndex(date) == 0 || DayMath.weekdayIndex(date) == 6
         let hovered = live && drag?.target == .dayTab(offset: offset)
-        let maxChips = max(1, Int((height - 30) / 19))
+        let maxChips = max(1, Int((height - 30) / 21))
         let shown = Array(tasks.prefix(tasks.count > maxChips ? maxChips - 1 : maxChips))
         let hidden = tasks.count - shown.count
-        return VStack(alignment: .leading, spacing: 2) {
+        return VStack(alignment: .leading, spacing: 0) {
             Text("\(DayMath.dayOfMonth(date))")
                 .font(.system(size: 13, weight: today ? .bold : .semibold))
                 .monospacedDigit()
@@ -122,7 +122,23 @@ struct MonthView: View {
                     .foregroundStyle(Tokens.muted)
                     .padding(.leading, 4)
             }
-            Spacer(minLength: 0)
+            // Пустой остаток клетки: удержание здесь создаёт задачу, по фишкам — тянет их.
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minHeight: 8)
+                .contentShape(Rectangle())
+                .gesture(
+                    HoldDragGesture(onChanged: { _, _ in
+                        // Одна задача «на весь день» за одно удержание, название спросит экран.
+                        guard creatingDay != offset else { return }
+                        creatingDay = offset
+                        onCreate(offset)
+                    }, onEnded: {
+                        creatingDay = nil
+                    }, onCancelled: {
+                        creatingDay = nil
+                    })
+                )
         }
         .padding(.top, 3)
         .padding(.horizontal, 1)
@@ -131,18 +147,6 @@ struct MonthView: View {
         .overlay(alignment: .trailing) { Rectangle().fill(Tokens.line.opacity(0.6)).frame(width: 1) }
         .contentShape(Rectangle())
         .onTapGesture { onSelectDay(offset) }
-        .gesture(
-            HoldDragGesture(onChanged: { _, _ in
-                // Удержание на дне: одна задача «на весь день» за одно удержание, название спросит экран.
-                guard creatingDay != offset else { return }
-                creatingDay = offset
-                onCreate(offset)
-            }, onEnded: {
-                creatingDay = nil
-            }, onCancelled: {
-                creatingDay = nil
-            })
-        )
         .reportZone("tab-\(offset)", enabled: live)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(DayMath.accessibilityLabel(offset: offset) + ", задач: \(tasks.count)")
@@ -164,6 +168,8 @@ struct MonthView: View {
                 RoundedRectangle(cornerRadius: 1).fill(style.dot).frame(width: 2).padding(.vertical, 2)
             }
             .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
+            // Фишка 17 pt, зона нажатия 21 pt: промах по высоте не создаёт новую задачу.
+            .padding(.vertical, 2)
             .contentShape(Rectangle())
             .onTapGesture { onEdit(task) }
             .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))

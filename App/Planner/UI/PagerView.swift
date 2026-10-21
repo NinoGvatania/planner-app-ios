@@ -12,6 +12,7 @@ struct PagerView<Content: View>: View {
     var hintKey: String? = nil
     @ViewBuilder let content: (_ index: Int, _ live: Bool, _ syncTick: Int) -> Content
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var dragX: CGFloat = 0
     @State private var axis: Axis?
     @State private var width: CGFloat = 0
@@ -25,11 +26,13 @@ struct PagerView<Content: View>: View {
                 content(index - 1, false, syncTick)
                     .frame(width: size.width, height: size.height)
                     .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 content(index, true, syncTick)
                     .frame(width: size.width, height: size.height)
                 content(index + 1, false, syncTick)
                     .frame(width: size.width, height: size.height)
                     .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
             .offset(x: -size.width + dragX)
             .onChange(of: size.width, initial: true) { _, value in width = value }
@@ -39,7 +42,11 @@ struct PagerView<Content: View>: View {
         .onChange(of: cancelWhen) { _, cancel in
             if cancel { settleBack() }
         }
-        .task { await hintOnce() }
+        .onChange(of: scenePhase) { _, phase in
+            // Звонок или уход в фон посреди свайпа: конца жеста не будет — вернуть страницу на место.
+            if phase != .active { settleBack() }
+        }
+        .task(id: hintKey) { await hintOnce() }
     }
 
     private var swipe: some Gesture {
@@ -63,16 +70,17 @@ struct PagerView<Content: View>: View {
                 let projected = value.predictedEndTranslation.width
                 if abs(value.translation.width) > width * 0.2 || abs(projected) > width * 0.45 {
                     let direction = value.translation.width < 0 ? 1 : -1
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        dragX = -CGFloat(direction) * width
-                    } completion: {
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) {
-                            index += direction
-                            dragX = 0
-                        }
+                    // Страница подменяется сразу (картинка не меняется: сдвиг компенсируется), потом доезжает.
+                    // Так второй быстрый свайп не застаёт незавершённую подмену. Если период упёрся
+                    // в край и номер не изменился — просто вернуться.
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    let before = index
+                    withTransaction(transaction) {
+                        index += direction
+                        if index != before { dragX += CGFloat(direction) * width }
                     }
+                    withAnimation(.easeOut(duration: 0.22)) { dragX = 0 }
                 } else {
                     settleBack()
                 }

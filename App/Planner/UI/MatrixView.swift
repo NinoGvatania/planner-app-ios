@@ -16,6 +16,8 @@ struct MatrixView: View {
     var onDragCancelled: (() -> Void)? = nil
     /// Средняя страница пейджера: только она сообщает зоны сброса.
     var live = true
+    /// Пока открыт список квадранта (свайпы строк), экран не листается.
+    var lock: PagingLock? = nil
 
     @AppStorage("matrixLayout") private var layoutRaw = "grid"
     /// Открытый на весь экран квадрант: 1…4 — квадрант, 0 — «Не разобрано».
@@ -89,6 +91,12 @@ struct MatrixView: View {
         }
         .animation(.easeOut(duration: 0.18), value: drag != nil)
         .animation(.easeInOut(duration: 0.22), value: expanded)
+        .onChange(of: expanded) { _, value in
+            if live { lock?.locked = value != nil }
+        }
+        .onDisappear {
+            if live { lock?.locked = false }
+        }
     }
 
     private var overview: some View {
@@ -401,21 +409,37 @@ struct MatrixView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Не разобрано — показать все")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(list, id: \.id) { task in
-                        trayChip(task)
-                    }
-                    if list.isEmpty {
-                        Text("Всё разобрано")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(Tokens.muted)
-                            .padding(.horizontal, 6)
-                            .frame(height: Tokens.hitTarget)
-                    }
+            // Без горизонтальной прокрутки (она спорила бы со свайпом между периодами):
+            // три первые фишки и «+N», остальное — по тапу на шапку.
+            HStack(spacing: 6) {
+                ForEach(Array(list.prefix(3)), id: \.id) { task in
+                    trayChip(task)
                 }
-                .padding(.horizontal, 6)
+                if list.count > 3 {
+                    Button {
+                        expanded = 0
+                    } label: {
+                        Text("+\(list.count - 3)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Tokens.caption)
+                            .padding(.horizontal, 10)
+                            .frame(height: Tokens.hitTarget)
+                            .background(Color.black.opacity(0.25), in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Ещё \(list.count - 3): показать все неразобранные")
+                }
+                if list.isEmpty {
+                    Text("Всё разобрано")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Tokens.muted)
+                        .padding(.horizontal, 6)
+                        .frame(height: Tokens.hitTarget)
+                }
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 6)
             .frame(height: Tokens.hitTarget + 8)
         }
         .frame(height: trayHeight)
@@ -431,7 +455,7 @@ struct MatrixView: View {
             .foregroundStyle(Tokens.text)
             .padding(.horizontal, 12)
             .frame(height: Tokens.hitTarget)
-            .frame(maxWidth: 200)
+            .frame(maxWidth: 150)
             .background(Color.black.opacity(0.25), in: Capsule())
             .opacity(drag?.taskID == task.id ? 0.35 : 1)
             .contentShape(Capsule())

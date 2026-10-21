@@ -34,7 +34,15 @@ final class SpeechCleanupTests: XCTestCase {
         XCTAssertTrue(SpeechCleanup.isMeaningful("Резюме"))
     }
 
+    func testKeepsVerbsThatLookLikeLeadIns() {
+        XCTAssertEqual(SpeechCleanup.clean("ещё раз проверить почту"), "Ещё раз проверить почту")
+        XCTAssertEqual(SpeechCleanup.clean("Запиши меня на стрижку"), "Запиши меня на стрижку")
+        XCTAssertEqual(SpeechCleanup.clean("Записать показания счётчика"), "Записать показания счётчика")
+        XCTAssertEqual(SpeechCleanup.clean("Запиши задачу позвонить маме"), "Позвонить маме")
+    }
+
     func testTidyTitle() {
+        XCTAssertEqual(SpeechCleanup.tidyTitle("Проверить это"), "Проверить это")
         XCTAssertEqual(SpeechCleanup.tidyTitle("позвонить маме и"), "Позвонить маме")
         XCTAssertEqual(SpeechCleanup.tidyTitle("купить хлеб потом."), "Купить хлеб")
         XCTAssertEqual(SpeechCleanup.tidyTitle("и"), "И")
