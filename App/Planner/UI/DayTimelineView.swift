@@ -540,7 +540,7 @@ struct DayTimelineView: View {
         }
     }
 
-    private func dragGesture(for task: PlannerTask) -> some Gesture {
+    private func dragGesture(for task: PlannerTask) -> some UIGestureRecognizerRepresentable {
         HoldDragGesture(
             onChanged: { location, start in onDragChanged(task, location, start) },
             onEnded: onDragEnded
