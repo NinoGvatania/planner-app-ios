@@ -65,6 +65,8 @@ enum CalendarSync {
     }
 
     /// Синхронизировать прямо сейчас (кнопка в настройках). Возвращает число своих событий в календаре.
+    /// Снимок задач делается на главном акторе (модели SwiftData), в фоне — только работа с календарём.
+    @MainActor
     static func syncNow(_ tasks: [PlannerTask]) async -> Int {
         let items = snapshot(tasks)
         pending?.cancel()
