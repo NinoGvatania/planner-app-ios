@@ -33,6 +33,8 @@ struct PlannerScreen: View {
     @State private var showProjects = false
     @State private var showSettings = false
     @State private var showStreak = false
+    /// Задачи, отмеченные сделанными прямо в листе «Просрочено»: остаются в нём, чтобы можно было вернуть.
+    @State private var recentlyDoneOverdue: Set<UUID> = []
     /// Откуда пришли в текущий вид (месяц → день, неделя → день): кнопка «назад» ведёт обратно.
     @State private var navStack: [ViewMode] = []
     /// Горизонтальный сдвиг сетки дня при свайпе между днями.
@@ -46,6 +48,11 @@ struct PlannerScreen: View {
     private var visibleTasks: [PlannerTask] { showDone ? tasks : tasks.filter { !$0.isDone } }
     private var overdueTasks: [PlannerTask] {
         tasks.filter { $0.isOverdue(today: today) }
+            .sorted { ($0.day ?? today, $0.start ?? 0) < ($1.day ?? today, $1.start ?? 0) }
+    }
+    /// Для листа: просроченные плюс те, что только что отметили сделанными в нём (свайп «Вернуть»).
+    private var overdueSheetTasks: [PlannerTask] {
+        tasks.filter { $0.isOverdue(today: today) || recentlyDoneOverdue.contains($0.id) }
             .sorted { ($0.day ?? today, $0.start ?? 0) < ($1.day ?? today, $1.start ?? 0) }
     }
     private var backlogTasks: [PlannerTask] {
@@ -177,7 +184,8 @@ struct PlannerScreen: View {
                         let date = DayMath.day(offset: offset)
                         return visibleTasks.contains { $0.day == date }
                     }, hoveredOffset: hoveredTab, onShiftWeek: { direction in
-                        slideDays(by: 7 * direction, direction: direction)
+                        // Полоска уже уехала за пальцем: день меняем сразу, сетка въезжает сбоку.
+                        switchDays(by: 7 * direction, slideFrom: direction)
                     })
                 }
                 DayTimelineView(
@@ -261,9 +269,9 @@ struct PlannerScreen: View {
         .overlay(alignment: .bottom) { toastView }
         .overlay(alignment: .topLeading) { ghostView }
         .animation(.easeOut(duration: 0.22), value: toast)
-        .sheet(isPresented: $showOverdue) {
+        .sheet(isPresented: $showOverdue, onDismiss: { recentlyDoneOverdue = [] }) {
             OverdueSheet(
-                tasks: overdueTasks,
+                tasks: overdueSheetTasks,
                 onToggle: toggleDone,
                 onFitToday: { fitOverdue(dayOffset: 0) },
                 onFitTomorrow: { fitOverdue(dayOffset: 1) },
@@ -280,8 +288,13 @@ struct PlannerScreen: View {
             NotificationScheduler.sync(tasks + created)
         }
         .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else {
+                // Ушли в фон посреди свайпа: системного конца жеста может не быть — сбросить вручную.
+                swipeAxis = nil
+                pageX = 0
+                return
+            }
             // Вернулись в приложение (возможно, уже другой день): досоздать рутины, обновить напоминания.
-            guard phase == .active else { return }
             let created = RoutineManager.materialize(in: context)
             NotificationScheduler.sync(tasks + created)
         }
@@ -340,9 +353,10 @@ struct PlannerScreen: View {
         DragGesture(minimumDistance: 14, coordinateSpace: .named("planner"))
             .onChanged { value in
                 if swipeAxis == nil {
-                    swipeAxis = drag == nil && abs(value.translation.width) > abs(value.translation.height) * 1.4 ? .horizontal : .vertical
+                    let free = drag == nil && !gridScroll.interacting
+                    swipeAxis = free && abs(value.translation.width) > abs(value.translation.height) * 1.4 ? .horizontal : .vertical
                 }
-                guard swipeAxis == .horizontal, drag == nil else { return }
+                guard swipeAxis == .horizontal, drag == nil, !gridScroll.interacting else { return }
                 pageX = value.translation.width
             }
             .onEnded { value in
@@ -373,15 +387,22 @@ struct PlannerScreen: View {
         withAnimation(.easeOut(duration: 0.16)) {
             pageX = -CGFloat(direction) * width
         } completion: {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                dayOffset = max(-365, min(365, dayOffset + delta))
-                pageX = CGFloat(direction) * width
-            }
-            Task { @MainActor in
-                withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
-            }
+            switchDays(by: delta, slideFrom: direction)
+        }
+    }
+
+    /// Подменить день сразу (без анимации) и въехать сеткой со стороны `direction`.
+    private func switchDays(by delta: Int, slideFrom direction: Int) {
+        let width = rootSize.width
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            dayOffset = max(-365, min(365, dayOffset + delta))
+            pageX = width > 0 ? CGFloat(direction) * width : 0
+        }
+        guard width > 0 else { return }
+        Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.2)) { pageX = 0 }
         }
     }
 
@@ -536,6 +557,8 @@ struct PlannerScreen: View {
         drag = nil
         springTask?.cancel()
         springOffset = nil
+        swipeAxis = nil
+        if pageX != 0 { withAnimation(.easeOut(duration: 0.2)) { pageX = 0 } }
     }
 
     private func dragEnded() {
@@ -625,8 +648,12 @@ struct PlannerScreen: View {
 
     private func toggleDone(_ task: PlannerTask) {
         let firstToday = !task.isDone && !streakInfo.todayClosed
+        let wasOverdue = task.isOverdue(today: today)
         task.isDone.toggle()
         task.completedAt = task.isDone ? Date() : nil
+        if task.isDone, wasOverdue, showOverdue {
+            recentlyDoneOverdue.insert(task.id)
+        }
         if task.isDone {
             // Первая задача за день продлевает серию — говорим об этом в тосте.
             var message = "Готово: «\(task.title)»"
@@ -638,6 +665,8 @@ struct PlannerScreen: View {
             showToast(message, actionTitle: "Отменить", duration: 4.5) {
                 task.isDone = false
                 task.completedAt = nil
+                // Вернуть напоминание, событие в календаре и снимок виджета.
+                NotificationScheduler.sync(tasks)
             }
         }
         NotificationScheduler.sync(tasks)

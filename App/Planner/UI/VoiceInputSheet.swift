@@ -23,6 +23,9 @@ struct VoiceInputSheet: View {
         (committed + [recorder.liveText]).filter { !$0.isEmpty }.joined(separator: "\n")
     }
     private var isEmptyTranscript: Bool { transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// Что уйдёт в разбор по галочке: на паузе — поле правки, иначе — живая расшифровка.
+    private var textToProcess: String { recorder.status == .paused ? editedTranscript : transcript }
+    private var canProcess: Bool { !textToProcess.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var statusText: String {
         switch recorder.status {
@@ -74,6 +77,12 @@ struct VoiceInputSheet: View {
             await recorder.start()
         }
         .onDisappear { recorder.shutdown() }
+        .onChange(of: recorder.status) { _, status in
+            // Распознаватель сам ушёл в паузу (ошибка, обрыв сети): поле правки заполняем тем, что есть.
+            if status == .paused, editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                editedTranscript = transcript
+            }
+        }
         .sheet(item: $editing) { draft in
             DraftEditSheet(draft: Binding(
                 get: { drafts.first { $0.id == draft.id } ?? draft },
@@ -198,9 +207,9 @@ struct VoiceInputSheet: View {
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(Tokens.onAccent)
                         .frame(width: 64, height: 64)
-                        .background(isEmptyTranscript ? Tokens.accent.opacity(0.35) : Tokens.accent, in: Circle())
+                        .background(canProcess ? Tokens.accent : Tokens.accent.opacity(0.35), in: Circle())
                 }
-                .disabled(isEmptyTranscript && editedTranscript.isEmpty)
+                .disabled(!canProcess)
                 .accessibilityLabel("Разобрать на задачи")
             }
             .padding(.horizontal, 24)
@@ -224,8 +233,10 @@ struct VoiceInputSheet: View {
     }
 
     private func resume() {
-        // Правки на паузе становятся основой, дальше дописываем.
+        // Правки на паузе становятся основой, дальше дописываем. Недоговорённый заход распознавателя
+        // уже лежит в поле — второй раз его не принимаем.
         if recorder.status == .paused {
+            recorder.discardPending()
             committed = editedTranscript.isEmpty ? [] : [editedTranscript]
         }
         transcriptFocused = false
@@ -233,12 +244,7 @@ struct VoiceInputSheet: View {
     }
 
     private func process() {
-        let text: String
-        if recorder.status == .paused {
-            text = editedTranscript
-        } else {
-            text = transcript
-        }
+        let text = textToProcess
         recorder.shutdown()
         transcriptFocused = false
         stage = .processing
@@ -246,7 +252,10 @@ struct VoiceInputSheet: View {
             let result = await TaskExtractor.extract(text)
             // «Надиктовать ещё» добавляет к уже разобранным карточкам, а не заменяет их.
             drafts.append(contentsOf: result.drafts)
-            sourceNote = result.source == .model ? "Разобрано моделью" : (TaskExtractor.hasKey ? "Модель недоступна — разобрано правилами" : "Разобрано правилами")
+            switch result.source {
+            case .model: sourceNote = "Разобрано моделью"
+            case .rules(let reason): sourceNote = reason ?? "Разобрано правилами"
+            }
             stage = .review
         }
     }

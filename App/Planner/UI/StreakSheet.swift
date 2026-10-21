@@ -69,19 +69,24 @@ struct StreakSheet: View {
             }
             .padding(.horizontal, 20)
             Spacer(minLength: 0)
-            Button("Готово") { dismiss() }
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Tokens.onAccent)
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+            Button {
+                dismiss()
+            } label: {
+                Text("Готово")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Tokens.onAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
+                    .contentShape(Rectangle())
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
         }
         .foregroundStyle(Tokens.text)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Tokens.panel)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.72), .large])
         .presentationDragIndicator(.hidden)
         .presentationBackground(Tokens.panel)
     }

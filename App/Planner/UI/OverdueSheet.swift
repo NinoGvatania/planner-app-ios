@@ -29,7 +29,7 @@ struct OverdueSheet: View {
                 HStack(spacing: 8) {
                     Text("Просрочено")
                         .font(.system(size: 17, weight: .bold))
-                    Text("\(tasks.count)")
+                    Text("\(tasks.filter { !$0.isDone }.count)")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color(hex: 0xC9C9D1))
                         .frame(minWidth: 22, minHeight: 22)
@@ -46,13 +46,20 @@ struct OverdueSheet: View {
                         .frame(height: 36)
                         .background(moveOpen ? Color(hex: 0xA93832) : Color(hex: 0xC8433C), in: Capsule())
                         .foregroundStyle(.white)
+                        .frame(minHeight: Tokens.hitTarget)
+                        .contentShape(Rectangle())
                 }
                 .disabled(tasks.isEmpty)
-                Button("Готово") { dismiss() }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Tokens.accent)
-                    .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
-                    .accessibilityLabel("Закрыть")
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Готово")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Tokens.accent)
+                        .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Закрыть")
             }
             .padding(.leading, 18)
             .padding(.trailing, 8)

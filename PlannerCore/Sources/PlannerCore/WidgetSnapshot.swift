@@ -80,8 +80,13 @@ public struct WidgetSnapshot: Codable, Sendable {
     public var openCount: Int { items.filter { !$0.isDone }.count }
     public var doneCount: Int { items.filter { $0.isDone }.count }
 
-    /// Ближайшая незавершённая задача с временем после `minutes` (минуты от полуночи).
+    /// Ближайшая незавершённая задача: с временем — та, что ещё не закончилась к `minutes`
+    /// (минуты от полуночи), без времени — любая открытая.
     public func next(after minutes: Int) -> Item? {
-        items.first { !$0.isDone && ($0.start ?? -1) + $0.duration > minutes }
+        items.first { item in
+            guard !item.isDone else { return false }
+            guard let start = item.start else { return true }
+            return start + item.duration > minutes
+        }
     }
 }

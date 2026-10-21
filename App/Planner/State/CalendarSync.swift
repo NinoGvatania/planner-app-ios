@@ -64,10 +64,11 @@ enum CalendarSync {
         }
     }
 
-    /// Синхронизировать прямо сейчас (кнопка в настройках). Возвращает число своих событий в календаре.
+    /// Синхронизировать прямо сейчас (кнопка в настройках). Возвращает число своих событий в календаре,
+    /// `nil` — календарь недоступен (не удалось создать «Quick»).
     /// Снимок задач делается на главном акторе (модели SwiftData), в фоне — только работа с календарём.
     @MainActor
-    static func syncNow(_ tasks: [PlannerTask]) async -> Int {
+    static func syncNow(_ tasks: [PlannerTask]) async -> Int? {
         let items = snapshot(tasks)
         pending?.cancel()
         return await Task.detached(priority: .userInitiated) { sync(items) }.value
@@ -77,7 +78,6 @@ enum CalendarSync {
     static func clear() async {
         pending?.cancel()
         await Task.detached(priority: .userInitiated) {
-            guard targetCalendar(createIfNeeded: false) != nil else { return }
             sync([])
         }.value
     }
@@ -102,20 +102,27 @@ enum CalendarSync {
             return existing
         }
         guard createIfNeeded else { return nil }
-        let calendar = EKCalendar(for: .event, eventStore: store)
-        calendar.title = autoCalendarTitle
-        calendar.cgColor = UIColor(red: 0x3E / 255, green: 0xE0 / 255, blue: 0xA6 / 255, alpha: 1).cgColor
+        // Google/Exchange через CalDAV новые календари не принимают: пробуем источники по очереди.
         let sources = store.sources
-        calendar.source = store.defaultCalendarForNewEvents?.source
-            ?? sources.first { $0.sourceType == .calDAV && $0.title.localizedCaseInsensitiveContains("icloud") }
-            ?? sources.first { $0.sourceType == .local }
-            ?? sources.first
-        do {
-            try store.saveCalendar(calendar, commit: true)
-            return calendar
-        } catch {
-            return nil
+        var candidates: [EKSource] = []
+        func add(_ source: EKSource?) {
+            guard let source, !candidates.contains(where: { $0.sourceIdentifier == source.sourceIdentifier }) else { return }
+            candidates.append(source)
         }
+        add(sources.first { $0.sourceType == .calDAV && $0.title.localizedCaseInsensitiveContains("icloud") })
+        add(store.defaultCalendarForNewEvents?.source)
+        add(sources.first { $0.sourceType == .local })
+        sources.forEach { add($0) }
+        for source in candidates {
+            let calendar = EKCalendar(for: .event, eventStore: store)
+            calendar.title = autoCalendarTitle
+            calendar.cgColor = UIColor(red: 0x3E / 255, green: 0xE0 / 255, blue: 0xA6 / 255, alpha: 1).cgColor
+            calendar.source = source
+            if (try? store.saveCalendar(calendar, commit: true)) != nil {
+                return calendar
+            }
+        }
+        return nil
     }
 
     // MARK: - Синхронизация
@@ -129,14 +136,16 @@ enum CalendarSync {
     }
 
     @discardableResult
-    static func sync(_ items: [Item]) -> Int {
-        guard let calendar = targetCalendar(createIfNeeded: true) else { return 0 }
+    static func sync(_ items: [Item]) -> Int? {
+        guard let calendar = targetCalendar(createIfNeeded: !items.isEmpty) else { return items.isEmpty ? 0 : nil }
+        // Окно поиска: год назад и год вперёд, но так, чтобы покрыть все экспортируемые даты.
         let now = Date()
-        let window = store.predicateForEvents(
-            withStart: now.addingTimeInterval(-370 * 86_400),
-            end: now.addingTimeInterval(400 * 86_400),
-            calendars: [calendar]
-        )
+        var start = now.addingTimeInterval(-370 * 86_400)
+        var end = now.addingTimeInterval(400 * 86_400)
+        if let earliest = items.map(\.day).min() { start = min(start, earliest.addingTimeInterval(-2 * 86_400)) }
+        if let latest = items.map(\.day).max() { end = max(end, latest.addingTimeInterval(3 * 86_400)) }
+        // Свои события ищем во всех календарях: после смены календаря в настройках старые переезжают.
+        let window = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         var existing: [String: EKEvent] = [:]
         for event in store.events(matching: window) {
             if let id = taskID(of: event) { existing[id] = event }
@@ -146,14 +155,22 @@ enum CalendarSync {
         for item in items {
             let key = item.id.uuidString
             seen.insert(key)
-            let event = existing[key] ?? EKEvent(eventStore: store)
-            if apply(item, to: event, in: calendar) {
+            if let event = existing[key] {
+                guard apply(item, to: event, in: calendar) else { continue }
                 do {
                     try store.save(event, span: .thisEvent, commit: false)
                     dirty = true
                 } catch {
-                    continue
+                    // Перенос между источниками (iCloud → Google) не удался: удалить и создать заново.
+                    if (try? store.remove(event, span: .thisEvent, commit: false)) != nil { dirty = true }
+                    let fresh = EKEvent(eventStore: store)
+                    _ = apply(item, to: fresh, in: calendar)
+                    if (try? store.save(fresh, span: .thisEvent, commit: false)) != nil { dirty = true }
                 }
+            } else {
+                let event = EKEvent(eventStore: store)
+                _ = apply(item, to: event, in: calendar)
+                if (try? store.save(event, span: .thisEvent, commit: false)) != nil { dirty = true }
             }
         }
         for (key, event) in existing where !seen.contains(key) {

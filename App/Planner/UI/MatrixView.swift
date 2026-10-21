@@ -23,7 +23,7 @@ struct MatrixView: View {
 
     private let labelWidth: CGFloat = 18
     private let cellSpacing: CGFloat = 8
-    private let rowHeight: CGFloat = 40
+    private let rowHeight: CGFloat = Tokens.hitTarget
     private let cellHeaderHeight: CGFloat = 34
     private let trayHeight: CGFloat = 96
     private var isList: Bool { layoutRaw == "list" }
@@ -123,7 +123,7 @@ struct MatrixView: View {
 
     private func gridLayout(height: CGFloat) -> some View {
         let axisHeight: CGFloat = 22
-        let cellHeight = max(120, (height - axisHeight - trayHeight - cellSpacing * 2) / 2)
+        let cellHeight = max(120, (height - axisHeight - trayHeight - cellSpacing * 3) / 2)
         return VStack(spacing: cellSpacing) {
             HStack(spacing: cellSpacing) {
                 Color.clear.frame(width: labelWidth, height: axisHeight)
@@ -241,7 +241,7 @@ struct MatrixView: View {
                 Circle()
                     .strokeBorder(task.style.dot, lineWidth: 2)
                     .frame(width: 16, height: 16)
-                    .frame(width: 32, height: rowHeight)
+                    .frame(width: Tokens.hitTarget, height: rowHeight)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

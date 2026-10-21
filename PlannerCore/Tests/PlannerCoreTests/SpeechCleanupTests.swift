@@ -11,6 +11,8 @@ final class SpeechCleanupTests: XCTestCase {
 
     func testKeepsContent() {
         XCTAssertEqual(SpeechCleanup.clean("завтра в 10 созвон, важно"), "Завтра в 10 созвон, важно")
+        XCTAssertEqual(SpeechCleanup.clean("позвонить в банк, так как карта не работает"), "Позвонить в банк, так как карта не работает")
+        XCTAssertEqual(SpeechCleanup.clean("сделать так, чтобы уведомления приходили"), "Сделать так, чтобы уведомления приходили")
         XCTAssertEqual(SpeechCleanup.clean("записаться к стоматологу"), "Записаться к стоматологу")
     }
 

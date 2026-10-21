@@ -460,6 +460,7 @@ struct DayTimelineView: View {
             }
             .gesture(
                 HoldDragGesture(space: "grid", onChanged: { location, start in
+                    scroll.interacting = true
                     let startMinutes = snappedMinutes(forY: start.y)
                     let end = snappedMinutes(forY: location.y)
                     let stretched = end > startMinutes ? min(end - startMinutes, ClockGrid.dayEnd - startMinutes) : 30
@@ -469,12 +470,14 @@ struct DayTimelineView: View {
                         updateAutoScroll(fingerY: location.y - scroll.offset + viewport.minY)
                     }
                 }, onEnded: {
+                    scroll.interacting = false
                     stopAutoScroll()
                     if let creating = creating {
                         onCreate(creating.day, creating.start, creating.duration)
                     }
                     creating = nil
                 }, onCancelled: {
+                    scroll.interacting = false
                     stopAutoScroll()
                     creating = nil
                 })
@@ -549,6 +552,7 @@ struct DayTimelineView: View {
                     .onChanged { value in
                         let moved = abs(value.translation.height) > 3 || abs(value.translation.width) > 3
                         guard moved else { return }
+                        scroll.interacting = true
                         if resizeTracker.edge == nil {
                             resizeTracker.edge = edge
                             resizeTracker.originalStart = originalStart
@@ -560,6 +564,7 @@ struct DayTimelineView: View {
                         updateAutoScroll(fingerY: value.location.y)
                     }
                     .onEnded { value in
+                        scroll.interacting = false
                         stopAutoScroll()
                         resizeTracker.edge = nil
                         let moved = abs(value.translation.height) > 3 || abs(value.translation.width) > 3

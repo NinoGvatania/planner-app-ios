@@ -141,7 +141,10 @@ struct SettingsSheet: View {
 
     private func syncCalendarNow() async {
         guard calendarExport, CalendarSync.hasAccess else { return }
-        let count = await CalendarSync.syncNow(tasks)
+        guard let count = await CalendarSync.syncNow(tasks) else {
+            syncNote = "Не удалось создать календарь «Quick» — выбери в списке существующий календарь"
+            return
+        }
         syncNote = "В календаре \(count) " + DayMath.plural(count, "событие", "события", "событий")
     }
 }

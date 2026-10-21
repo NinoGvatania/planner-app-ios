@@ -54,6 +54,12 @@ struct MonthView: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .simultaneousGesture(swipe)
+        .onChange(of: drag?.taskID) { _, id in
+            // Взяли задачу — страницу не двигаем, даже если свайп уже начался.
+            guard id != nil else { return }
+            axis = .vertical
+            if dragX != 0 { withAnimation(.easeOut(duration: 0.15)) { dragX = 0 } }
+        }
         .task { await hintSwipeOnce() }
     }
 

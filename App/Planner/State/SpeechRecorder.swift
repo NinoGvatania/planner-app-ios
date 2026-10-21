@@ -35,8 +35,9 @@ final class SpeechRecorder {
     private var awaitingFinal = false
     private var finalTimeout: Task<Void, Never>?
 
-    /// Длина паузы между сегментами распознавателя, после которой начинается новая задача.
-    private let pauseThreshold: TimeInterval = 2.0
+    /// Пауза между словами, после которой в тексте ставится перенос строки — подсказка для разбора.
+    /// Короткие заминки внутри фразы (до трёх секунд) текст не делят.
+    private let pauseThreshold: TimeInterval = 3.0
     /// Уровень сигнала, выше которого считаем, что человек говорит.
     private let voiceThreshold: Double = 0.08
 
@@ -89,12 +90,24 @@ final class SpeechRecorder {
         }
     }
 
-    /// Закрыть всё; `liveText` остаётся доступным до следующего старта.
+    /// Закрыть всё и забыть недоговорённый текст: экран уже забрал его из `liveText`/`onSegmentFinished`.
+    /// Иначе следующий `start()` отдал бы его второй раз (дубли карточек после «Надиктовать ещё»).
     func shutdown() {
+        discardPending()
+        status = .idle
+    }
+
+    /// Забыть недоговорённый заход без передачи наружу (на паузе текст уже лежит в поле правки).
+    func discardPending() {
         finalTimeout?.cancel()
+        finalTimeout = nil
         awaitingFinal = false
         endSession()
-        status = .idle
+        liveText = ""
+        rawText = ""
+        segmentText = ""
+        breaks = []
+        lastVoiced = 0
     }
 
     // MARK: - Разрешения

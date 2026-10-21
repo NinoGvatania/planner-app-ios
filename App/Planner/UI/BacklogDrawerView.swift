@@ -119,14 +119,21 @@ struct BacklogDrawerView: View {
                 .frame(width: 38, height: 5)
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("Бэклог")
-                        .font(.system(size: 17, weight: .bold))
-                    Text("\(openCount)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0xC9C9D1))
-                        .frame(minWidth: 22, minHeight: 22)
-                        .padding(.horizontal, 3)
-                        .background(Tokens.badge, in: Capsule())
+                    HStack(spacing: 8) {
+                        Text("Бэклог")
+                            .font(.system(size: 17, weight: .bold))
+                        Text("\(openCount)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(hex: 0xC9C9D1))
+                            .frame(minWidth: 22, minHeight: 22)
+                            .padding(.horizontal, 3)
+                            .background(Tokens.badge, in: Capsule())
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Бэклог, \(openCount) " + DayMath.plural(openCount, "задача", "задачи", "задач"))
+                    .accessibilityHint(isOpen ? "Свернуть" : "Открыть")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { toggle() }
                     if let onStreak {
                         Button(action: onStreak) {
                             HStack(spacing: 3) {
@@ -140,7 +147,8 @@ struct BacklogDrawerView: View {
                             .padding(.horizontal, 8)
                             .frame(height: 26)
                             .background(Tokens.badge, in: Capsule())
-                            .contentShape(Capsule())
+                            .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Серия: \(streak) дней подряд")
@@ -152,15 +160,18 @@ struct BacklogDrawerView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(Tokens.accent)
                 } else if isOpen {
-                    Button("Готово") {
+                    Button {
                         withAnimation(.spring(duration: 0.3)) {
                             isFull = false
                             isOpen = false
                         }
+                    } label: {
+                        Text("Готово")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Tokens.accent)
+                            .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
+                            .contentShape(Rectangle())
                     }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Tokens.accent)
-                    .frame(minWidth: Tokens.hitTarget, minHeight: 36)
                     .accessibilityLabel("Свернуть бэклог")
                 } else {
                     Image(systemName: "chevron.up")
@@ -189,9 +200,7 @@ struct BacklogDrawerView: View {
                     settle(to: projected)
                 }
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(isOpen ? "Свернуть бэклог" : "Открыть бэклог")
+        .accessibilityElement(children: .contain)
     }
 
     /// Тап: свёрнута → открыта, открыта → свёрнута, на весь экран → открыта.

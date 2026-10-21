@@ -4,7 +4,11 @@ import PlannerCore
 /// Разбор расшифровки диктовки на задачи. С ключом Claude API — модель делит по смыслу и чистит
 /// формулировки; без ключа или без сети — правила (`DictationSplitter` + `SpeechCleanup` + парсер).
 enum TaskExtractor {
-    enum Source { case model, rules }
+    enum Source: Equatable {
+        case model
+        /// Правила; `reason` — почему не модель (nil — ключа нет, это нормальный режим).
+        case rules(reason: String?)
+    }
 
     static let apiKeyAccount = "anthropicAPIKey"
     static let modelKey = "extractorModel"
@@ -22,11 +26,20 @@ enum TaskExtractor {
     /// Разобрать текст. Возвращает задачи и чем разбирали.
     static func extract(_ transcript: String) async -> (drafts: [DraftTask], source: Source) {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return ([], .rules) }
-        if hasKey, let drafts = try? await ClaudeExtractor.extract(text, apiKey: apiKey, model: model), !drafts.isEmpty {
+        guard !text.isEmpty else { return ([], .rules(reason: nil)) }
+        guard hasKey else { return (byRules(text), .rules(reason: nil)) }
+        do {
+            let drafts = try await ClaudeExtractor.extract(text, apiKey: apiKey, model: model)
+            guard !drafts.isEmpty else { return (byRules(text), .rules(reason: "Модель не нашла задач — разобрано правилами")) }
             return (drafts, .model)
+        } catch let error as ClaudeExtractor.ExtractError {
+            return (byRules(text), .rules(reason: error.userMessage))
+        } catch let error as URLError {
+            let offline = error.code == .notConnectedToInternet || error.code == .networkConnectionLost || error.code == .cannotFindHost
+            return (byRules(text), .rules(reason: offline ? "Нет сети — разобрано правилами" : "Сеть не ответила — разобрано правилами"))
+        } catch {
+            return (byRules(text), .rules(reason: "Модель недоступна — разобрано правилами"))
         }
-        return (byRules(text), .rules)
     }
 
     /// Правила: деление на куски, чистка мусора, парсер быстрого ввода для дня, времени и квадранта.
@@ -61,7 +74,22 @@ enum ClaudeExtractor {
 
     struct Payload: Decodable { let tasks: [ExtractedTask] }
 
-    enum ExtractError: Error { case badResponse, refusal, http(Int) }
+    enum ExtractError: Error {
+        case badResponse, refusal, truncated
+        case http(Int)
+
+        /// Что сказать пользователю, почему разбирали правилами.
+        var userMessage: String {
+            switch self {
+            case .http(401), .http(403): return "Ключ Claude API не принят — проверь его в настройках; разобрано правилами"
+            case .http(429): return "Лимит Claude API исчерпан — разобрано правилами"
+            case .http(let code): return "Claude API: ошибка \(code) — разобрано правилами"
+            case .refusal: return "Модель отказалась разбирать этот текст — разобрано правилами"
+            case .truncated: return "Диктовка слишком длинная для одного ответа модели — разобрано правилами"
+            case .badResponse: return "Непонятный ответ модели — разобрано правилами"
+            }
+        }
+    }
 
     static let schema: [String: Any] = [
         "type": "object",
@@ -119,7 +147,7 @@ enum ClaudeExtractor {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         let body: [String: Any] = [
             "model": model,
-            "max_tokens": 4000,
+            "max_tokens": 16000,
             "system": systemPrompt(today: Date()),
             "messages": [["role": "user", "content": "Расшифровка:\n\(transcript)"]],
             "output_config": ["format": ["type": "json_schema", "schema": schema]],
@@ -130,6 +158,7 @@ enum ClaudeExtractor {
         guard (200..<300).contains(http.statusCode) else { throw ExtractError.http(http.statusCode) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ExtractError.badResponse }
         if json["stop_reason"] as? String == "refusal" { throw ExtractError.refusal }
+        if json["stop_reason"] as? String == "max_tokens" { throw ExtractError.truncated }
         guard let content = json["content"] as? [[String: Any]],
               let text = content.first(where: { $0["type"] as? String == "text" })?["text"] as? String,
               let payloadData = text.data(using: .utf8) else { throw ExtractError.badResponse }

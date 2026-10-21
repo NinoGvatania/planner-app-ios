@@ -28,7 +28,8 @@ struct TodayProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TodayEntry) -> Void) {
-        completion(TodayEntry(date: Date(), snapshot: context.isPreview ? .sample : (WidgetSnapshot.load() ?? .sample)))
+        // Пример — только для галереи виджетов; на экране без снимка честная заглушка «Открой Quick».
+        completion(TodayEntry(date: Date(), snapshot: context.isPreview ? .sample : WidgetSnapshot.load()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayEntry>) -> Void) {

@@ -122,18 +122,28 @@ struct DashboardView: View {
 
             HStack(spacing: 0) {
                 periodButton("chevron.left", label: "Прошлый период") { shift -= 1 }
-                VStack(spacing: 2) {
-                    Text(rangeTitle)
-                        .font(.system(size: 16, weight: .bold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    if shift != 0 {
-                        Button("К текущему") { withAnimation(.easeOut(duration: 0.2)) { shift = 0 } }
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Tokens.accent)
+                // Заголовок периода; если период сдвинут, весь центр — кнопка «к текущему» (цель ≥ 44 pt).
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { shift = 0 }
+                } label: {
+                    VStack(spacing: 2) {
+                        Text(rangeTitle)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Tokens.text)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        if shift != 0 {
+                            Text("К текущему")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Tokens.accent)
+                        }
                     }
+                    .frame(maxWidth: .infinity, minHeight: Tokens.hitTarget)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.plain)
+                .disabled(shift == 0)
+                .accessibilityLabel(shift == 0 ? rangeTitle : rangeTitle + ". Вернуться к текущему периоду")
                 periodButton("chevron.right", label: "Следующий период") { shift += 1 }
             }
             .padding(.horizontal, 6)
