@@ -27,6 +27,10 @@ struct PlannerScreen: View {
     @State private var editingTask: PlannerTask?
     @State private var newTitle = ""
     @State private var rootSize: CGSize = .zero
+    @State private var gridScroll = GridScroll()
+    @State private var scrollToNowRequest = 0
+    @State private var showProjects = false
+    @AppStorage("colorMode") private var colorModeRaw = ColorMode.quadrant.rawValue
 
     private let gridTopInset: CGFloat = 10
 
@@ -111,8 +115,16 @@ struct PlannerScreen: View {
                 todayNumber: DayMath.dayOfMonth(today),
                 mode: $mode,
                 showDone: $showDone,
+                colorMode: Binding(
+                    get: { ColorMode(rawValue: colorModeRaw) ?? .quadrant },
+                    set: { colorModeRaw = $0.rawValue }
+                ),
                 onOverdue: { showOverdue = true },
-                onToday: { withAnimation { dayOffset = 0 } }
+                onToday: {
+                    withAnimation { dayOffset = 0 }
+                    scrollToNowRequest += 1
+                },
+                onProjects: { showProjects = true }
             )
 
             switch mode {
@@ -135,7 +147,10 @@ struct PlannerScreen: View {
                     onDragEnded: dragEnded,
                     onCreate: createTask,
                     onEdit: { editingTask = $0 },
-                    onShiftDays: shiftDays
+                    onShiftDays: shiftDays,
+                    scroll: gridScroll,
+                    onAutoScrollTick: refreshDropTarget,
+                    scrollToNowRequest: scrollToNowRequest
                 )
             case .month:
                 MonthView(
@@ -177,11 +192,7 @@ struct PlannerScreen: View {
         .coordinateSpace(name: "planner")
         .onGeometryChange(for: CGSize.self) { $0.size } action: { rootSize = $0 }
         .onPreferenceChange(ZoneFramesKey.self) { zones = $0 }
-        .onChange(of: zones) { _, _ in
-            // Сетка уехала под пальцем (автопрокрутка) — пересчитать, куда упадёт задача.
-            guard let state = drag else { return }
-            drag?.target = dropTarget(at: state.location, duration: state.duration, grab: state.grabOffsetY)
-        }
+        .onChange(of: zones) { _, _ in refreshDropTarget() }
         .background(Tokens.background.ignoresSafeArea())
         .foregroundStyle(Tokens.text)
         .overlay(alignment: .bottom) { toastView }
@@ -216,6 +227,9 @@ struct PlannerScreen: View {
         }
         .fullScreenCover(isPresented: $showVoice) {
             VoiceInputSheet(onDone: addDrafts)
+        }
+        .sheet(isPresented: $showProjects) {
+            ProjectsSheet()
         }
         .sheet(item: $editingTask) { task in
             TaskEditSheet(
@@ -346,13 +360,21 @@ struct PlannerScreen: View {
 
     // MARK: - Перетаскивание
 
+    /// Сетка проехала сама или зоны поменялись — пересчитать цель под тем же пальцем.
+    private func refreshDropTarget() {
+        guard let state = drag else { return }
+        let target = dropTarget(at: state.location, duration: state.duration, grab: state.grabOffsetY)
+        if target != state.target { drag?.target = target }
+    }
+
     private func dragChanged(_ task: PlannerTask, location: CGPoint, startLocation: CGPoint) {
         if drag == nil || drag?.taskID != task.id {
             var grab: CGFloat = min(CGFloat(task.duration) / 60 * Tokens.hourHeight / 2, 20)
             let fromTimeline = task.day != nil && task.start != nil
             if fromTimeline, let day = task.day, let start = task.start,
-               let column = zones["grid-\(DayMath.offset(of: day))"] {
-                let blockTop = column.minY + gridTopInset + CGFloat(start) / 60 * Tokens.hourHeight
+               let column = zones["grid-\(DayMath.offset(of: day))"], let viewport = zones["timeline"] {
+                // Колонка сообщает рамку в координатах содержимого сетки; переводим в «planner».
+                let blockTop = viewport.minY - gridScroll.offset + column.minY + gridTopInset + CGFloat(start) / 60 * Tokens.hourHeight
                 grab = max(0, startLocation.y - blockTop)
             }
             drag = DragState(taskID: task.id, title: task.title, duration: task.duration, location: location,
@@ -409,9 +431,11 @@ struct PlannerScreen: View {
             if let allDay = zones["allday-\(offset)"], allDay.contains(point) { return .allDay(day: offset) }
         }
         guard let viewport = zones["timeline"], viewport.contains(point) else { return nil }
+        // Колонки сетки сообщают рамки в координатах содержимого (они не меняются при прокрутке).
+        let contentPoint = CGPoint(x: point.x - viewport.minX, y: point.y - viewport.minY + gridScroll.offset)
         for offset in visibleDays {
-            if let column = zones["grid-\(offset)"], column.contains(point) {
-                let y = point.y - grab - column.minY - gridTopInset
+            if let column = zones["grid-\(offset)"], column.contains(contentPoint) {
+                let y = contentPoint.y - grab - column.minY - gridTopInset
                 let minutes = Int((y / Tokens.hourHeight * 60 / 15).rounded()) * 15
                 return .grid(day: offset, start: ClockGrid.clampedStart(minutes, duration: duration))
             }
@@ -598,7 +622,8 @@ struct PlannerScreen: View {
         if let existing = try? context.fetch(descriptor).first {
             return existing
         }
-        let project = Project(name: name)
+        let count = (try? context.fetchCount(FetchDescriptor<Project>())) ?? 0
+        let project = Project(name: name, colorIndex: count % ProjectPalette.colors.count)
         context.insert(project)
         return project
     }

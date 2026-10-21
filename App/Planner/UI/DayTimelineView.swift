@@ -21,15 +21,20 @@ struct DayTimelineView: View {
     /// Создать задачу: (день, начало, длительность).
     let onCreate: (Int, Int, Int) -> Void
     let onEdit: (PlannerTask) -> Void
-    /// Сдвинуть окно дней (свайп по заголовкам в режиме «3 дня»).
+    /// Сдвинуть окно дней (свайп по заголовкам недели).
     var onShiftDays: ((Int) -> Void)? = nil
+    /// Смещение прокрутки сетки, общее с экраном (для зон сброса).
+    let scroll: GridScroll
+    /// Сетка проехала сама под неподвижным пальцем — экран пересчитывает цель сброса.
+    var onAutoScrollTick: (() -> Void)? = nil
+    /// Увеличивается, когда нужно прокрутить к текущему времени (кнопка «к сегодня»).
+    var scrollToNowRequest: Int = 0
 
     @State private var liveDuration: Int?
     @State private var liveStart: Int?
     /// Силуэт создаваемой задачи, пока тянут по свободному месту.
     @State private var creating: (day: Int, start: Int, duration: Int)?
     @State private var scrollPosition = ScrollPosition(edge: .top)
-    @State private var scrollOffset: CGFloat = 0
     @State private var scrolledToNow = false
     /// Видимая область сетки в координатах «planner».
     @State private var viewport: CGRect = .zero
@@ -101,7 +106,7 @@ struct DayTimelineView: View {
                 }
                 .scrollPosition($scrollPosition)
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
-                    scrollOffset = offset
+                    scroll.offset = offset
                 }
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("planner")) } action: { frame in
                     viewport = frame
@@ -117,6 +122,9 @@ struct DayTimelineView: View {
                 stopAutoScroll()
             }
         }
+        .onChange(of: scrollToNowRequest) { _, _ in
+            withAnimation(.easeOut(duration: 0.25)) { scrollToNow() }
+        }
         .onDisappear { stopAutoScroll() }
     }
 
@@ -125,11 +133,14 @@ struct DayTimelineView: View {
     private func scrollToNowIfNeeded() {
         guard !scrolledToNow, viewport.height > 0 else { return }
         scrolledToNow = true
+        DispatchQueue.main.async { scrollToNow() }
+    }
+
+    /// Текущий час минус один — вверху видимой области.
+    private func scrollToNow() {
         let hour = max(0, min(23, DayMath.nowMinutes() / 60 - 1))
         let y = min(topInset + CGFloat(hour) * Tokens.hourHeight, max(0, contentHeight - viewport.height))
-        DispatchQueue.main.async {
-            scrollPosition.scrollTo(y: y)
-        }
+        scrollPosition.scrollTo(y: y)
     }
 
     /// У края видимой области (52 pt) сетка едет сама по 12 pt за кадр, как в прототипе.
@@ -149,13 +160,15 @@ struct DayTimelineView: View {
         autoScroll = nil
         guard direction != 0 else { return }
         autoScroll = Task { @MainActor in
-            var y = scrollOffset
+            var y = scroll.offset
             while !Task.isCancelled {
                 let limit = max(0, contentHeight - viewport.height)
                 let next = max(0, min(limit, y + CGFloat(direction) * 12))
                 if next == y { break }
                 y = next
                 scrollPosition.scrollTo(y: y)
+                scroll.offset = y
+                onAutoScrollTick?()
                 try? await Task.sleep(for: .milliseconds(16))
             }
         }
@@ -169,14 +182,14 @@ struct DayTimelineView: View {
 
     /// Координата «planner» → координата содержимого сетки.
     private func gridY(fromPlannerY y: CGFloat) -> CGFloat {
-        y - viewport.minY + scrollOffset
+        y - viewport.minY + scroll.offset
     }
 
     // MARK: - Заголовки дней (3 дня)
 
     private var dayHeaders: some View {
         HStack(spacing: 0) {
-            Color.clear.frame(width: Tokens.gutter)
+            Color.clear.frame(width: Tokens.gutter, height: 48)
             ForEach(days, id: \.self) { offset in
                 let date = date(offset)
                 let hovered = drag?.target == .dayTab(offset: offset)
@@ -281,7 +294,7 @@ struct DayTimelineView: View {
                 let left = Tokens.gutter + columnWidth * CGFloat(index)
                 columnBackground(day: day)
                     .frame(width: columnWidth, height: contentHeight)
-                    .reportZone("grid-\(day)")
+                    .reportZone("grid-\(day)", space: "grid")
                     .position(x: left + columnWidth / 2, y: contentHeight / 2)
             }
 
@@ -334,7 +347,15 @@ struct DayTimelineView: View {
                 TimelineView(.everyMinute) { context in
                     let minutes = DayMath.nowMinutes(at: context.date)
                     let y = topInset + CGFloat(minutes) / 60 * Tokens.hourHeight
+                    let nearestHourY = topInset + (CGFloat(minutes) / 60).rounded() * Tokens.hourHeight
                     ZStack(alignment: .topLeading) {
+                        if abs(nearestHourY - y) < 22 {
+                            // Подпись часа рядом с «сейчас» прячется, чтобы не налезать.
+                            Rectangle()
+                                .fill(Tokens.background)
+                                .frame(width: Tokens.gutter - 8, height: 22)
+                                .position(x: (Tokens.gutter - 8) / 2, y: nearestHourY)
+                        }
                         nowLine(width: columnWidth)
                             .position(x: Tokens.gutter + columnWidth * CGFloat(index) + columnWidth / 2, y: y)
                         nowLabel(minutes: minutes)
@@ -345,6 +366,7 @@ struct DayTimelineView: View {
             }
         }
         .frame(height: contentHeight)
+        .coordinateSpace(name: "grid")
         .padding(.trailing, 8)
     }
 
@@ -434,7 +456,7 @@ struct DayTimelineView: View {
             .fill(Color.white)
             .frame(width: 44, height: 6)
             .overlay(Capsule().stroke(Tokens.background, lineWidth: 2))
-            .frame(width: 88, height: 36)
+            .frame(width: min(88, width + 6), height: 36)
             .contentShape(Rectangle())
             .position(x: centerX, y: edge == .top ? top : top + height)
             .gesture(

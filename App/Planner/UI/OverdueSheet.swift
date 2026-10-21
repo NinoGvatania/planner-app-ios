@@ -111,7 +111,7 @@ struct OverdueSheet: View {
     }
 
     private func row(_ task: PlannerTask) -> some View {
-        let style = task.quadrant.style
+        let style = task.style
         let dayLabel = task.day.map { DayMath.label(offset: DayMath.offset(of: $0)) } ?? ""
         let when = task.start.map { "\(dayLabel) · " + ClockGrid.format(minutes: $0) + "–" + ClockGrid.format(minutes: $0 + task.duration) } ?? "\(dayLabel) · весь день"
         return HStack(alignment: .top, spacing: 6) {

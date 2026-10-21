@@ -31,12 +31,18 @@ struct ZoneFramesKey: PreferenceKey {
 }
 
 extension View {
-    /// Сообщает рамку этого вида в координатном пространстве «planner».
-    func reportZone(_ id: String) -> some View {
+    /// Сообщает рамку этого вида в координатном пространстве «planner» (или другом названном).
+    func reportZone(_ id: String, space: String = "planner") -> some View {
         background(
             GeometryReader { geometry in
-                Color.clear.preference(key: ZoneFramesKey.self, value: [id: geometry.frame(in: .named("planner"))])
+                Color.clear.preference(key: ZoneFramesKey.self, value: [id: geometry.frame(in: .named(space))])
             }
         )
     }
+}
+
+/// Смещение прокрутки сетки. Обычный класс, не Observable: меняется на каждом кадре прокрутки,
+/// и перерисовывать экран из-за этого не нужно; читается в момент жеста.
+final class GridScroll {
+    var offset: CGFloat = 0
 }

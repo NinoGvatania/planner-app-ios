@@ -34,8 +34,10 @@ struct HeaderView: View {
     let todayNumber: Int
     @Binding var mode: ViewMode
     @Binding var showDone: Bool
+    @Binding var colorMode: ColorMode
     let onOverdue: () -> Void
     let onToday: () -> Void
+    let onProjects: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -81,6 +83,12 @@ struct HeaderView: View {
                     }
                     Divider()
                     Toggle("Показывать выполненные", isOn: $showDone)
+                    Picker("Цвет задач", selection: $colorMode) {
+                        ForEach(ColorMode.allCases) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    Button("Проекты…", systemImage: "folder", action: onProjects)
                     Divider()
                     Text("Сборка \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
                 } label: {
@@ -91,14 +99,9 @@ struct HeaderView: View {
                 .accessibilityLabel("Переключить вид")
 
                 Button(action: onToday) {
-                    ZStack {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 19, weight: .medium))
-                        Text("\(todayNumber)")
-                            .font(.system(size: 8, weight: .bold))
-                            .offset(y: 3)
-                    }
-                    .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
+                    Image(systemName: (1...50).contains(todayNumber) ? "\(todayNumber).square" : "calendar")
+                        .font(.system(size: 21, weight: .medium))
+                        .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
                 }
                 .accessibilityLabel("К сегодняшнему дню")
             }

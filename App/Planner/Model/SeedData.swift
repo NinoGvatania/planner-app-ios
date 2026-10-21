@@ -8,10 +8,10 @@ enum SeedData {
         let count = (try? context.fetchCount(FetchDescriptor<PlannerTask>())) ?? 0
         guard count == 0 else { return }
 
-        let study = Project(name: "Учёба")
-        let home = Project(name: "Дом")
-        let sport = Project(name: "Спорт")
-        let routines = Project(name: "Рутины")
+        let study = Project(name: "Учёба", colorIndex: 0)
+        let home = Project(name: "Дом", colorIndex: 2)
+        let sport = Project(name: "Спорт", colorIndex: 3)
+        let routines = Project(name: "Рутины", colorIndex: 4)
         for project in [study, home, sport, routines] {
             context.insert(project)
         }

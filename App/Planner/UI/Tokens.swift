@@ -63,7 +63,52 @@ extension QuadrantStyle {
     static let unsorted = QuadrantStyle(dot: Color(hex: 0x8C8C96), background: Color(hex: 0x232429), border: Color(hex: 0x3A3B42), text: Color(hex: 0xE6E6EB))
 }
 
+/// Чем красить задачи: квадрантом Эйзенхауэра или цветом проекта.
+enum ColorMode: String, CaseIterable, Identifiable {
+    case quadrant, project
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .quadrant: return "По матрице Эйзенхауэра"
+        case .project: return "По проектам"
+        }
+    }
+
+    /// Текущая настройка (меняется в меню вида, хранится в UserDefaults).
+    static var current: ColorMode {
+        ColorMode(rawValue: UserDefaults.standard.string(forKey: "colorMode") ?? "") ?? .quadrant
+    }
+}
+
+/// Палитра цветов проектов.
+enum ProjectPalette {
+    static let colors: [UInt32] = [
+        0x5E9EFF, 0xFF6159, 0xFFC53D, 0x5CCB6E, 0xB58CFF,
+        0xFF8A5B, 0x3EE0A6, 0xFF6FB5, 0x7FD3FF, 0xC9A66B,
+    ]
+
+    static func color(_ index: Int) -> Color {
+        Color(hex: colors[((index % colors.count) + colors.count) % colors.count])
+    }
+}
+
+extension Project {
+    var color: Color { ProjectPalette.color(colorIndex) }
+
+    var style: QuadrantStyle {
+        QuadrantStyle(dot: color, background: color.opacity(0.18), border: color.opacity(0.45), text: Tokens.text)
+    }
+}
+
 extension PlannerTask {
-    /// Цвет задачи: серый, пока квадрант не выбран, иначе цвет квадранта.
-    var style: QuadrantStyle { sortedQuadrant?.style ?? .unsorted }
+    /// Цвет задачи. По матрице: серый, пока квадрант не выбран, иначе цвет квадранта.
+    /// По проектам: цвет проекта, без проекта — серый.
+    var style: QuadrantStyle {
+        switch ColorMode.current {
+        case .quadrant: return sortedQuadrant?.style ?? .unsorted
+        case .project: return project?.style ?? .unsorted
+        }
+    }
 }

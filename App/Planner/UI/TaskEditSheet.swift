@@ -89,12 +89,17 @@ struct TaskEditSheet: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(projects, id: \.name) { project in
-                                    Button(project.name) {
+                                    Button {
                                         projectName = project.name
                                         applyProject()
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Circle().fill(project.color).frame(width: 8, height: 8)
+                                            Text(project.name)
+                                        }
                                     }
                                     .buttonStyle(.bordered)
-                                    .tint(task.project?.name == project.name ? Tokens.accent : Tokens.caption)
+                                    .tint(task.project?.name == project.name ? project.color : Tokens.caption)
                                 }
                             }
                         }
@@ -199,7 +204,7 @@ struct TaskEditSheet: View {
         } else if let existing = projects.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
             task.project = existing
         } else {
-            let project = Project(name: name.capitalizedFirst)
+            let project = Project(name: name.capitalizedFirst, colorIndex: projects.count % ProjectPalette.colors.count)
             context.insert(project)
             task.project = project
         }
