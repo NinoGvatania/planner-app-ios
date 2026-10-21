@@ -268,13 +268,15 @@ struct BacklogDrawerView: View {
     // MARK: - Ввод
 
     private var inputRow: some View {
+        // Жидкое стекло: строка ввода и круглая кнопка — в одном контейнере, чтобы стекло сливалось.
+        GlassEffectContainer(spacing: 8) {
         HStack(alignment: .top, spacing: 8) {
             TextField("Завтра в 10 созвон, важно", text: $input)
                 .font(.system(size: 15))
                 .foregroundStyle(Tokens.text)
                 .padding(.horizontal, 16)
                 .frame(height: Tokens.hitTarget)
-                .background(Tokens.field, in: Capsule())
+                .glassEffect(.regular.tint(Tokens.field.opacity(0.55)).interactive(), in: Capsule())
                 .submitLabel(.done)
                 .onSubmit(onSubmit)
                 .accessibilityLabel("Новая задача")
@@ -284,7 +286,7 @@ struct BacklogDrawerView: View {
                     Image(systemName: "mic.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
-                        .glassEffect(.regular.tint(Tokens.accent).interactive(), in: Circle())
+                        .glassEffect(.regular.tint(Tokens.accent.opacity(0.75)).interactive(), in: Circle())
                         .foregroundStyle(Tokens.onAccent)
                 }
                 .accessibilityLabel("Голосовой ввод")
@@ -293,11 +295,12 @@ struct BacklogDrawerView: View {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 18, weight: .bold))
                         .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
-                        .glassEffect(.regular.tint(Tokens.accent).interactive(), in: Circle())
+                        .glassEffect(.regular.tint(Tokens.accent.opacity(0.75)).interactive(), in: Circle())
                         .foregroundStyle(Tokens.onAccent)
                 }
                 .accessibilityLabel("Добавить задачу")
             }
+        }
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
