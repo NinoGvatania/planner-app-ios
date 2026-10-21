@@ -19,9 +19,26 @@ public enum DictationSplitter {
         "потом", "затем", "далее", "дальше", "также", "плюс", "ещё", "еще",
     ]
 
-    /// Порядковые: только в начале фразы или после запятой («второе — позвонить»).
+    /// Порядковые маркеры: в начале фразы или после запятой делят всегда («второе — позвонить»),
+    /// в середине — когда за ними (через «задача», «нужно», «мне»…) идёт действие:
+    /// «первая задача любить Дашу вторая задача гладить кота» — две задачи, «посмотреть второе видео» — одна.
     public static let ordinalConnectors: [String] = [
-        "второе", "третье", "четвёртое", "четвертое", "следующее",
+        "первое", "первая", "второе", "вторая", "третье", "третья", "четвёртое", "четвертое", "четвёртая",
+        "четвертая", "пятое", "пятая", "шестое", "шестая", "седьмое", "седьмая", "последнее", "последняя",
+        "следующее",
+    ]
+
+    /// Слова между маркером и действием, которые не мешают делению: «вторая задача нужно будет купить…».
+    static let markerSkip: Set<String> = [
+        "задача", "задание", "дело", "пункт", "вещь", "момент", "нужно", "надо", "будет", "бы", "мне", "не",
+        "забыть", "обязательно", "это", "значит", "короче", "ну", "вот", "ещё", "еще", "также", "потом", "затем",
+        "и", "а", "что",
+    ]
+
+    /// Вводные посреди фразы, за которыми начинается новое действие: «доработать текст надо отправить его».
+    public static let midLeadIns: [String] = [
+        "не забыть", "ещё надо", "еще надо", "ещё нужно", "еще нужно", "потом надо", "потом нужно",
+        "также надо", "также нужно", "надо бы", "нужно бы", "надо", "нужно",
     ]
 
     /// Слова на -ть/-ти, которые не глаголы: числительные и существительные.
@@ -40,10 +57,56 @@ public enum DictationSplitter {
         var pieces: [String] = []
         for line in withBreaks.components(separatedBy: "\n") {
             for part in splitByHardConnectors(line) {
-                pieces.append(contentsOf: splitByConjunctions(part, linguistics: linguistics))
+                for chunk in splitByOrdinals(part, linguistics: linguistics) {
+                    pieces.append(contentsOf: splitByConjunctions(chunk, linguistics: linguistics))
+                }
             }
         }
         return pieces.map(clean).filter { !$0.isEmpty }
+    }
+
+    // MARK: - Порядковые маркеры посреди фразы
+
+    private static let wordPattern = try! NSRegularExpression(pattern: "[а-яёА-ЯЁa-zA-Z0-9-]+")
+
+    private static func splitByOrdinals(_ text: String, linguistics: Linguistics?) -> [String] {
+        let ns = text as NSString
+        let matches = wordPattern.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        let words = matches.map { ns.substring(with: $0.range).lowercased() }
+        var cuts: [Int] = []
+        var index = 1
+        while index < words.count {
+            if ordinalConnectors.contains(words[index]) {
+                var next = index + 1
+                var skipped = 0
+                while next < words.count, markerSkip.contains(words[next]), skipped < 4 {
+                    next += 1
+                    skipped += 1
+                }
+                if next < words.count, isActionWord(words[next], linguistics) {
+                    cuts.append(matches[index].range.location)
+                    index = next
+                    continue
+                }
+            }
+            index += 1
+        }
+        guard !cuts.isEmpty else { return [text] }
+        var pieces: [String] = []
+        var start = 0
+        for cut in cuts {
+            pieces.append(ns.substring(with: NSRange(location: start, length: cut - start)))
+            start = cut
+        }
+        pieces.append(ns.substring(from: start))
+        return pieces
+    }
+
+    /// Слово — действие: глагол по окончанию или по части речи от платформы.
+    static func isActionWord(_ word: String, _ linguistics: Linguistics?) -> Bool {
+        guard !notVerbs.contains(word) else { return false }
+        if hasVerb(word) { return true }
+        return linguistics?.isVerb(word) ?? false
     }
 
     // MARK: - Жёсткие связки
@@ -64,7 +127,7 @@ public enum DictationSplitter {
     // MARK: - «и», запятая и короткие связки между двумя действиями
 
     private static let softPattern: NSRegularExpression = {
-        let single = singleWordConnectors.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        let single = (midLeadIns + singleWordConnectors).map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
         let pattern = ",|\\s(?:и|\(single))(?!\\s+раз(?![а-яё]))(?=\\s)"
         return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }()
@@ -125,10 +188,18 @@ public enum DictationSplitter {
         }
     }
 
+    private static let trailingConnectors: Set<String> = ["и", "а", "потом", "затем", "ну", "вот", "надо", "нужно"]
+
     private static func clean(_ text: String) -> String {
         let junk = CharacterSet(charactersIn: " ,;:-–—\n\t")
         var result = text.trimmingCharacters(in: junk)
         if result.lowercased().hasPrefix("и ") { result = String(result.dropFirst(2)) }
+        // Хвост-связка от деления: «позвонить маме и» → «позвонить маме».
+        var words = result.split(separator: " ").map(String.init)
+        while let last = words.last, trailingConnectors.contains(last.lowercased().trimmingCharacters(in: junk)) {
+            words.removeLast()
+        }
+        result = words.joined(separator: " ")
         return result.trimmingCharacters(in: junk)
     }
 }

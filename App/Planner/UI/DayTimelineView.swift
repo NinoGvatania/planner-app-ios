@@ -255,21 +255,53 @@ struct DayTimelineView: View {
 
     // MARK: - Весь день
 
-    /// Сколько задач без времени скрыто в свёрнутом виде (по всем колонкам).
-    private var hiddenAllDayCount: Int {
-        guard !allDayExpanded else { return 0 }
-        var hidden = 0
-        for day in days {
+    /// Задач без времени на показанных днях (без фантомов).
+    private var allDayTotal: Int {
+        days.reduce(0) { sum, day in
             let date = date(day)
-            let count = tasks.filter { $0.day == date && $0.start == nil }.count
-            hidden += max(0, count - 1)
+            return sum + tasks.filter { $0.day == date && $0.start == nil }.count
         }
-        return hidden
     }
 
+    /// Сколько задач без времени прячется за первой в каждой колонке.
+    private var allDayHidden: Int {
+        days.reduce(0) { sum, day in
+            let date = date(day)
+            return sum + max(0, tasks.filter { $0.day == date && $0.start == nil }.count - 1)
+        }
+    }
+
+    private var allDayChipHeight: CGFloat { narrowColumns ? 24 : 28 }
+
+    /// Высота развёрнутой панели: до пяти строк, дальше — прокрутка внутри панели, сетка не страдает.
+    private var allDayExpandedHeight: CGFloat {
+        let rows = days.enumerated().map { allDay(column: $0.offset, day: $0.element).count }.max() ?? 1
+        return CGFloat(min(max(rows, 1), 5)) * (allDayChipHeight + 4) + 8
+    }
+
+    /// Строка без времени: слева одна кнопка-счётчик («+7» / число), справа колонки. Развёрнутая —
+    /// отдельная панель с прокруткой, не выше пяти строк, с отступом от сетки.
     private var allDayRow: some View {
         HStack(alignment: .top, spacing: 0) {
-            allDayToggle
+            allDayBadge
+            if allDayExpanded {
+                ScrollView(.vertical, showsIndicators: false) {
+                    allDayColumns
+                }
+                .frame(height: allDayExpandedHeight)
+                .background(Tokens.panel.opacity(0.75), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
+                .padding(.trailing, 8)
+                .padding(.bottom, 6)
+            } else {
+                allDayColumns
+                    .padding(.trailing, 8)
+            }
+        }
+    }
+
+    private var allDayColumns: some View {
+        HStack(alignment: .top, spacing: 0) {
             ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                 let hovered = drag?.target == .allDay(day: day)
                 let date = date(day)
@@ -281,21 +313,6 @@ struct DayTimelineView: View {
                     ForEach(shown + phantoms, id: \.id) { task in
                         allDayChip(task, phantom: task.day != date)
                     }
-                    if !allDayExpanded, real.count > 1 {
-                        Button {
-                            withAnimation(.easeOut(duration: 0.2)) { allDayExpanded = true }
-                        } label: {
-                            Text("+\(real.count - 1)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(Tokens.caption)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, narrowColumns ? 4 : 10)
-                                .frame(height: 18)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Ещё \(real.count - 1): показать все")
-                    }
                 }
                 .frame(maxWidth: .infinity, minHeight: 40, alignment: .top)
                 .padding(.horizontal, narrowColumns ? 1 : 3)
@@ -305,31 +322,32 @@ struct DayTimelineView: View {
                 .reportZone("allday-\(day)", enabled: live)
             }
         }
-        .padding(.trailing, 8)
     }
 
-    /// Кнопка слева от строки без времени: стрелка и число скрытых задач.
-    private var allDayToggle: some View {
-        let hidden = hiddenAllDayCount
+    /// Единственная кнопка строки без времени: свёрнуто — «+7» (сколько спрятано), развёрнуто —
+    /// общее число на акцентной капсуле; тап переключает. Когда прятать нечего — пусто.
+    private var allDayBadge: some View {
+        let total = allDayTotal
+        let hidden = allDayHidden
         let active = hidden > 0 || allDayExpanded
         return Button {
             withAnimation(.easeOut(duration: 0.2)) { allDayExpanded.toggle() }
         } label: {
-            VStack(spacing: 2) {
-                Image(systemName: allDayExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 12, weight: .bold))
-                Text(hidden > 0 ? "+\(hidden)" : "")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(height: 13)
-            }
-            .foregroundStyle(active ? Tokens.caption : Tokens.muted.opacity(0.5))
-            .frame(width: Tokens.gutter - 7, height: Tokens.hitTarget)
-            .padding(.trailing, 7)
-            .contentShape(Rectangle())
+            Text(allDayExpanded ? "\(total)" : "+\(hidden)")
+                .font(.system(size: 11.5, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(allDayExpanded ? Tokens.onAccent : Tokens.caption)
+                .frame(minWidth: 28, minHeight: 22)
+                .padding(.horizontal, 3)
+                .background(allDayExpanded ? Tokens.accent : Tokens.badge, in: Capsule())
+                .opacity(active ? 1 : 0)
+                .frame(width: Tokens.gutter - 7, height: Tokens.hitTarget)
+                .padding(.trailing, 7)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!active)
-        .accessibilityLabel(allDayExpanded ? "Свернуть задачи без времени" : "Показать все задачи без времени")
+        .accessibilityLabel(allDayExpanded ? "Свернуть задачи без времени" : "Ещё \(hidden): показать все задачи без времени")
     }
 
     private func allDayChip(_ task: PlannerTask, phantom: Bool) -> some View {
