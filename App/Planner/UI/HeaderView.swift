@@ -52,8 +52,8 @@ enum Display: String, CaseIterable, Identifiable {
     }
 }
 
-/// Шапка: заголовок-меню периода (день / неделя / месяц / год), серия, кнопка режима
-/// (календарь / список / матрица / проекты / диаграмма), меню «…», «к сегодня».
+/// Шапка: заголовок-меню периода (день / неделя / месяц / год), отдельная кнопка серии и капсула:
+/// кнопка режима (календарь / список / матрица / проекты / диаграмма), меню «…», «к сегодня».
 /// «Просрочено» живёт в заголовке панели бэклога.
 struct HeaderView: View {
     let title: String
@@ -109,23 +109,25 @@ struct HeaderView: View {
             .layoutPriority(1)
             .accessibilityLabel("Период: \(period.title). Выбрать другой")
 
-            // Одна капсула на всё: серия, режим, «…», «сегодня» — ничего не висит отдельно.
-            HStack(spacing: 0) {
-                Button(action: onStreak) {
-                    HStack(spacing: 2) {
-                        Image(systemName: streak > 0 ? "flame.fill" : "flame")
-                            .font(.system(size: 15, weight: .bold))
-                        Text("\(streak)")
-                            .font(.system(size: 13, weight: .bold))
-                            .monospacedDigit()
-                    }
-                    .foregroundStyle(streak > 0 ? flame : Tokens.muted)
-                    .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
-                    .padding(.horizontal, 2)
-                    .contentShape(Rectangle())
+            // Серия — отдельной стеклянной кнопкой, не в капсуле управления.
+            Button(action: onStreak) {
+                HStack(spacing: 2) {
+                    Image(systemName: streak > 0 ? "flame.fill" : "flame")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("\(streak)")
+                        .font(.system(size: 13, weight: .bold))
+                        .monospacedDigit()
                 }
-                .accessibilityLabel("Серия: \(streak) дней подряд")
+                .foregroundStyle(streak > 0 ? flame : Tokens.muted)
+                .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
+                .padding(.horizontal, 4)
+                .contentShape(Capsule())
+            }
+            .glassEffect(.regular.tint(Tokens.cluster.opacity(0.6)), in: Capsule())
+            .accessibilityLabel("Серия: \(streak) дней подряд. История выполненных")
 
+            // Капсула управления: режим, «…», «сегодня».
+            HStack(spacing: 0) {
                 Menu {
                     Picker("Вид", selection: $display) {
                         ForEach(Display.allCases) { item in

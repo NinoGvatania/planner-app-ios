@@ -1,8 +1,14 @@
+import PlannerCore
 import SwiftUI
 
-/// Лист серии: огонёк, дни подряд, неделя точками, лучшая серия.
+/// Лист серии: огонёк, дни подряд, неделя точками, лучшая серия — и «кладбище»: история выполненных
+/// задач по дням, любую можно вернуть в работу.
 struct StreakSheet: View {
     let info: Streak.Info
+    /// Выполненные задачи, свежие сверху.
+    let done: [PlannerTask]
+    /// Вернуть задачу в работу (снять галочку).
+    let onRestore: (PlannerTask) -> Void
     @Environment(\.dismiss) private var dismiss
 
     private let flame = Color(hex: 0xFF9F43)
@@ -23,6 +29,40 @@ struct StreakSheet: View {
     }
 
     var body: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                streakBlock
+                graveyard
+            }
+            .padding(.bottom, 12)
+        }
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                dismiss()
+            } label: {
+                Text("Готово")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Tokens.onAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
+                    .contentShape(Rectangle())
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            .background(Tokens.panel)
+        }
+        .foregroundStyle(Tokens.text)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Tokens.panel)
+        .presentationDetents([.fraction(0.72), .large])
+        .presentationDragIndicator(.hidden)
+        .presentationBackground(Tokens.panel)
+    }
+
+    private var streakBlock: some View {
         VStack(spacing: 18) {
             Capsule()
                 .fill(Color(hex: 0x3A3B41))
@@ -68,27 +108,97 @@ struct StreakSheet: View {
                 stat("\(info.todayDone)", label: "сделано сегодня")
             }
             .padding(.horizontal, 20)
-            Spacer(minLength: 0)
-            Button {
-                dismiss()
-            } label: {
-                Text("Готово")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Tokens.onAccent)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
-                    .contentShape(Rectangle())
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 16)
         }
-        .foregroundStyle(Tokens.text)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Tokens.panel)
-        .presentationDetents([.fraction(0.72), .large])
-        .presentationDragIndicator(.hidden)
-        .presentationBackground(Tokens.panel)
+    }
+
+    // MARK: - Кладбище задач
+
+    /// Дни с выполненными задачами, свежие сверху; без даты выполнения — в конце, «Раньше».
+    private struct GraveDay: Identifiable {
+        let id: String
+        let title: String
+        let tasks: [PlannerTask]
+    }
+
+    private var graveyardDays: [GraveDay] {
+        let cal = DayMath.calendar
+        let today = DayMath.today()
+        var groups: [Date?: [PlannerTask]] = [:]
+        for task in done {
+            groups[task.completedAt.map { cal.startOfDay(for: $0) }, default: []].append(task)
+        }
+        let days = groups.keys.sorted { a, b in
+            switch (a, b) {
+            case let (a?, b?): return a > b
+            case (nil, _): return false
+            case (_, nil): return true
+            }
+        }
+        return days.map { day in
+            let tasks = (groups[day] ?? []).sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            guard let day else { return GraveDay(id: "earlier", title: "Раньше", tasks: tasks) }
+            let offset = DayMath.offset(of: day) - DayMath.offset(of: today)
+            let title = offset == 0 ? "Сегодня" : (offset == -1 ? "Вчера"
+                : DayMath.weekdayShort[DayMath.weekdayIndex(day)].capitalizedFirst + ", \(DayMath.dayOfMonth(day)) "
+                    + DayMath.monthGenitive[DayMath.monthIndex(day)])
+            return GraveDay(id: "\(day.timeIntervalSinceReferenceDate)", title: title, tasks: tasks)
+        }
+    }
+
+    private var graveyard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Кладбище задач")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer(minLength: 8)
+                Text("\(done.count)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Tokens.caption)
+            }
+            Text("Всё сделанное. Нажми на кружок — задача вернётся в работу.")
+                .font(.system(size: 12))
+                .foregroundStyle(Tokens.caption)
+            if done.isEmpty {
+                Text("Пока пусто — здесь будут выполненные задачи.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Tokens.muted)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+            }
+            LazyVStack(alignment: .leading, spacing: 4) {
+                ForEach(graveyardDays) { group in
+                    Text(group.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Tokens.caption)
+                        .padding(.top, 10)
+                        .padding(.bottom, 2)
+                    ForEach(group.tasks) { task in
+                        TaskRowView(task: task, meta: graveMeta(task), dimmed: true) {
+                            withAnimation(.easeOut(duration: 0.2)) { onRestore(task) }
+                        }
+                        .background(Tokens.cluster, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    /// «в 14:30 · было на пт 23» — когда сделано и куда была поставлена.
+    private func graveMeta(_ task: PlannerTask) -> String {
+        var parts: [String] = []
+        if let completed = task.completedAt {
+            let minutes = DayMath.calendar.component(.hour, from: completed) * 60
+                + DayMath.calendar.component(.minute, from: completed)
+            parts.append("в " + ClockGrid.format(minutes: minutes))
+        }
+        if let day = task.day {
+            parts.append("было на " + DayMath.label(offset: DayMath.offset(of: day)))
+        } else {
+            parts.append("из бэклога")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func stat(_ value: String, label: String) -> some View {

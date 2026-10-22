@@ -341,7 +341,11 @@ struct PlannerScreen: View {
             SettingsSheet()
         }
         .sheet(isPresented: $showStreak) {
-            StreakSheet(info: streakInfo)
+            StreakSheet(
+                info: streakInfo,
+                done: tasks.filter(\.isDone).sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) },
+                onRestore: toggleDone
+            )
         }
         .sheet(item: $editingTask) { task in
             TaskEditSheet(
