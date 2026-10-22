@@ -72,6 +72,7 @@ struct DayTimelineView: View {
     @State private var scrolledToNow = false
     /// Видимая область сетки в координатах «planner».
     @State private var viewport: CGRect = .zero
+    @Environment(\.pagerSwiping) private var pagerSwiping
     @State private var autoScroll: Task<Void, Never>?
     @State private var autoScrollDirection = 0
     @State private var resizeTracker = ResizeTracker()
@@ -145,11 +146,15 @@ struct DayTimelineView: View {
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
                     if live { scroll.offset = offset }
                 }
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("planner")) } action: { frame in
+                // Нужна только высота и вертикаль: без `x` свайп страницы вбок не перерисовывает сетку на каждом кадре.
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    let frame = proxy.frame(in: .named("planner"))
+                    return CGRect(x: 0, y: frame.minY, width: 0, height: frame.height)
+                } action: { frame in
                     viewport = frame
                     scrollToNowIfNeeded()
                 }
-                .reportZone("timeline", enabled: live)
+                .reportZone("timeline", enabled: live && !pagerSwiping)
             }
         }
         .onChange(of: drag?.location) { _, location in
@@ -334,7 +339,7 @@ struct DayTimelineView: View {
                 // не вылезают на сетку и не оставляют мёртвых мест под короткими колонками.
                 HStack(spacing: 0) {
                     ForEach(days, id: \.self) { day in
-                        Color.clear.reportZone("allday-\(day)", enabled: live && shown)
+                        Color.clear.reportZone("allday-\(day)", enabled: live && shown && !pagerSwiping)
                     }
                 }
                 .allowsHitTesting(false)
@@ -373,7 +378,7 @@ struct DayTimelineView: View {
                 .padding(.vertical, allDayPanelShown ? 4 : 0)
                 .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
                 .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
-                .reportZone("allday-\(day)", enabled: live && !allDayPanelShown)
+                .reportZone("allday-\(day)", enabled: live && !allDayPanelShown && !pagerSwiping)
             }
         }
     }

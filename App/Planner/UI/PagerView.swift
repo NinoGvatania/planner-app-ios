@@ -56,6 +56,7 @@ struct PagerView<Content: View>: View {
             .offset(x: -size.width + dragX)
             // Тапы страниц спрашивают, не хвост ли это свайпа (`onPageTap`).
             .environment(\.pagerMotion, motion)
+            .environment(\.pagerSwiping, axis == .horizontal)
             // Пока страница едет вбок, вертикальная прокрутка стоит: соседние страницы остаются на той же
             // высоте, что и средняя, и после подмены ничего не прыгает по вертикали.
             .scrollDisabled(axis == .horizontal)
@@ -182,11 +183,22 @@ private struct PagerMotionKey: EnvironmentKey {
     static var defaultValue: PagerMotion? { nil }
 }
 
+private struct PagerSwipingKey: EnvironmentKey {
+    static var defaultValue: Bool { false }
+}
+
 extension EnvironmentValues {
     /// Пейджер, внутри страницы которого лежит вид; `nil` — вне пейджера.
     var pagerMotion: PagerMotion? {
         get { self[PagerMotionKey.self] }
         set { self[PagerMotionKey.self] = newValue }
+    }
+
+    /// Страницу сейчас листают вбок. Зоны сброса страницы в это время не нужны (во время свайпа задачу
+    /// не тянут), а их рамки менялись бы на каждом кадре и перерисовывали весь экран.
+    var pagerSwiping: Bool {
+        get { self[PagerSwipingKey.self] }
+        set { self[PagerSwipingKey.self] = newValue }
     }
 }
 
