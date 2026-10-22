@@ -22,8 +22,9 @@
   `State/` — `DayMath` (даты и русские подписи), `DragState` (цель сброса и зоны через PreferenceKey),
   `HoldDragGesture` (удержание → перенос на UIKit‑распознавателе), `NotificationScheduler` (уведомления;
   заодно дёргает `CalendarSync` и `WidgetBridge`), `CalendarSync` (EventKit), `WidgetBridge`, `Streak`
-  (серия дней), `RoutineManager`, `SpeechRecorder` (диктовка), `TaskExtractor` + `OnDeviceExtractor`
-  (разбор расшифровки на устройстве: Apple Intelligence через FoundationModels, иначе правила),
+  (серия дней), `RoutineManager`, `SpeechRecorder` (диктовка), `TaskExtractor` (разбор расшифровки по
+  порядку: `ClaudeExtractor` по своему ключу API, `OnDeviceExtractor` — Apple Intelligence через
+  FoundationModels, иначе правила), `KeychainStore` (ключ Claude в связке ключей),
   `AppleLinguistics` (NaturalLanguage: глагол или нет), `DraftTask`;
   `UI/` — `PlannerScreen` (единственный экран: период × режим, пейджер, вся оркестровка жестов),
   `PagerView` (три страницы рядом, едет за пальцем; зоны и жесты только у средней), `DayTimelineView`

@@ -185,8 +185,8 @@ struct VoiceInputSheet: View {
                 .font(.system(size: 14))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Tokens.caption)
-            if case .unavailable = OnDeviceExtractor.status {
-                Text("Разбор идёт на iPhone по правилам: точка, пауза, «а ещё», «потом», «и» между действиями.")
+            if !ClaudeSettings.isEnabled {
+                Text("Без Claude разбор идёт по правилам: точка, пауза, «а ещё», «потом», «и» между действиями. Свой ключ Claude — в «…» → «Настройки…».")
                     .font(.system(size: 12.5))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Tokens.muted)
@@ -284,7 +284,8 @@ struct VoiceInputSheet: View {
             // «Надиктовать ещё» добавляет к уже разобранным карточкам, а не заменяет их.
             drafts.append(contentsOf: result.drafts)
             switch result.source {
-            case .model: sourceNote = "Разобрано Apple Intelligence на устройстве"
+            case .claude(let model): sourceNote = "Разобрано Claude · " + ClaudeSettings.title(of: model)
+            case .apple: sourceNote = "Разобрано Apple Intelligence на устройстве"
             case .rules(let reason): sourceNote = reason ?? "Разобрано правилами"
             }
             stage = .review

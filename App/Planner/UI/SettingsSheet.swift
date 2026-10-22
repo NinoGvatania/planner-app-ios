@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// Настройки: напоминания, экспорт в Календарь, состояние умного разбора диктовки (на устройстве), сборка.
+/// Настройки: напоминания, экспорт в Календарь, разбор диктовки (Claude по своему ключу, Apple Intelligence,
+/// правила), сборка.
 struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Query private var tasks: [PlannerTask]
@@ -12,6 +13,13 @@ struct SettingsSheet: View {
     @State private var calendarDenied = CalendarSync.isDenied
     @State private var calendars: [CalendarSync.CalendarChoice] = []
     @State private var syncNote = ""
+    @AppStorage(ClaudeSettings.enabledKey) private var claudeEnabled = true
+    @AppStorage(ClaudeSettings.modelKey) private var claudeModel = ClaudeSettings.defaultModel
+    /// Ключ в поле ввода (сохраняется в связку ключей кнопкой).
+    @State private var claudeKey = ""
+    @State private var claudeHasKey = ClaudeSettings.hasKey
+    @State private var claudeNote = ""
+    @State private var claudeChecking = false
 
     var body: some View {
         NavigationStack {
@@ -24,15 +32,16 @@ struct SettingsSheet: View {
                     }
                 }
                 calendarSection
+                claudeSection
                 Section {
-                    LabeledContent("Умный разбор", value: OnDeviceExtractor.status == .available ? "Apple Intelligence" : "правила")
+                    LabeledContent("Сейчас разбирает", value: engineTitle)
                     Text(OnDeviceExtractor.status.note)
                         .font(.footnote)
                         .foregroundStyle(Tokens.caption)
                 } header: {
                     Text("Диктовка")
                 } footer: {
-                    Text("Надиктованный текст разбирается на задачи прямо на iPhone, в сеть ничего не уходит. Если Apple Intelligence доступен и понимает русский, делит по смыслу и чистит формулировки; иначе работают правила: точки, паузы, «а ещё», «потом», союз «и» между действиями, чистка речевого мусора.")
+                    Text("По порядку: Claude (если ключ задан и включён), Apple Intelligence на iPhone, правила — точки, паузы, «а ещё», «потом», союз «и» между действиями, чистка речевого мусора. Почему не сработала модель, видно на экране разбора.")
                 }
                 Section {
                     LabeledContent("Сборка", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")
@@ -73,6 +82,70 @@ struct SettingsSheet: View {
             Task { await syncCalendarNow() }
         }
         .onChange(of: reminderLead) { _, _ in NotificationScheduler.sync(tasks) }
+    }
+
+    // MARK: - Claude
+
+    private var engineTitle: String {
+        if claudeHasKey && claudeEnabled { return "Claude · " + ClaudeSettings.title(of: claudeModel) }
+        return OnDeviceExtractor.status == .available ? "Apple Intelligence" : "правила"
+    }
+
+    private var claudeSection: some View {
+        Section {
+            Toggle("Разбирать через Claude", isOn: $claudeEnabled)
+                .disabled(!claudeHasKey)
+            SecureField(claudeHasKey ? "Ключ сохранён · ввести новый" : "Ключ API: sk-ant-…", text: $claudeKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(size: 15, design: .monospaced))
+                .submitLabel(.done)
+                .onSubmit(saveClaudeKey)
+            if !claudeKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button("Сохранить ключ", action: saveClaudeKey)
+            }
+            Picker("Модель", selection: $claudeModel) {
+                ForEach(ClaudeSettings.models, id: \.id) { item in
+                    Text(item.title).tag(item.id)
+                }
+            }
+            if claudeHasKey {
+                Button(claudeChecking ? "Проверяю…" : "Проверить ключ") {
+                    claudeChecking = true
+                    claudeNote = ""
+                    Task {
+                        claudeNote = await ClaudeExtractor.check(apiKey: ClaudeSettings.apiKey, model: claudeModel)
+                        claudeChecking = false
+                    }
+                }
+                .disabled(claudeChecking)
+                Button("Удалить ключ", role: .destructive) {
+                    KeychainStore.write("", for: ClaudeSettings.keyAccount)
+                    claudeHasKey = false
+                    claudeKey = ""
+                    claudeNote = "Ключ удалён"
+                }
+            }
+            if !claudeNote.isEmpty {
+                Text(claudeNote)
+                    .font(.footnote)
+                    .foregroundStyle(Tokens.caption)
+            }
+        } header: {
+            Text("Claude — свой ключ API")
+        } footer: {
+            Text("Ключ создаётся на console.anthropic.com → API Keys (нужен пополненный баланс; подписка Claude Pro/Max для API не подходит). Хранится только в связке ключей этого iPhone. Надиктованный текст уходит на api.anthropic.com только при разборе диктовки; одна диктовка стоит доли цента. Без сети или при ошибке разбор идёт дальше по порядку.")
+        }
+    }
+
+    private func saveClaudeKey() {
+        let key = claudeKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        KeychainStore.write(key, for: ClaudeSettings.keyAccount)
+        claudeHasKey = ClaudeSettings.hasKey
+        claudeKey = ""
+        claudeEnabled = true
+        claudeNote = claudeHasKey ? "Ключ сохранён — нажми «Проверить ключ»" : "Не удалось сохранить ключ"
     }
 
     // MARK: - Календарь

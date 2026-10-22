@@ -2,14 +2,19 @@ import Foundation
 import FoundationModels
 import PlannerCore
 
-/// Разбор расшифровки диктовки на задачи — целиком на устройстве, без сети.
-/// Если доступен Apple Intelligence (FoundationModels) и он понимает русский — модель делит текст по смыслу
-/// и чистит формулировки; иначе правила: `DictationSplitter` с частями речи от NaturalLanguage,
-/// `SpeechCleanup` и парсер быстрого ввода.
+/// Разбор расшифровки диктовки на задачи. По порядку:
+/// 1. Claude по своему ключу API, если он задан и включён в настройках (текст уходит на api.anthropic.com);
+/// 2. Apple Intelligence на устройстве (FoundationModels) — пробуется всегда, но русский модель Apple
+///    официально не поддерживает, и iOS обычно отказывает;
+/// 3. правила: `DictationSplitter` с частями речи от NaturalLanguage, `SpeechCleanup` и парсер быстрого ввода.
+/// Почему не сработали модели, видно на экране разбора.
 enum TaskExtractor {
     enum Source: Equatable {
-        case model
-        /// Правила; `reason` — почему не модель (nil — модель на этом iPhone недоступна, это обычный режим).
+        /// Claude, модель `model`.
+        case claude(model: String)
+        /// Apple Intelligence на устройстве.
+        case apple
+        /// Правила; `reason` — почему не модель.
         case rules(reason: String?)
     }
 
@@ -17,17 +22,69 @@ enum TaskExtractor {
     static func extract(_ transcript: String) async -> (drafts: [DraftTask], source: Source) {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return ([], .rules(reason: nil)) }
-        // Модель пробуем всегда, что бы ни говорила проверка доступности: если системе что-то
+        var reasons: [String] = []
+        if ClaudeSettings.isEnabled {
+            let model = ClaudeSettings.model
+            do {
+                let drafts = dedupe(try await ClaudeExtractor.extract(text, apiKey: ClaudeSettings.apiKey, model: model))
+                if !drafts.isEmpty { return (drafts, .claude(model: model)) }
+                reasons.append("Claude не нашёл задач")
+            } catch {
+                reasons.append(ClaudeExtractor.message(for: error))
+            }
+        }
+        // Apple Intelligence пробуем всегда, что бы ни говорила проверка доступности: если системе что-то
         // не нравится, она сама откажет, и причина будет видна на экране.
         let status = OnDeviceExtractor.status
         do {
-            let raw = try await OnDeviceExtractor.extract(text)
-            let drafts = dedupe(raw)
-            guard !drafts.isEmpty else { return (byRules(text), .rules(reason: "Apple Intelligence не нашёл задач — разобрано правилами")) }
-            return (drafts, .model)
+            let drafts = dedupe(try await OnDeviceExtractor.extract(text))
+            if !drafts.isEmpty { return (drafts, .apple) }
+            reasons.append("Apple Intelligence не нашёл задач")
         } catch {
-            return (byRules(text), .rules(reason: OnDeviceExtractor.message(for: error, status: status)))
+            reasons.append(OnDeviceExtractor.message(for: error, status: status))
         }
+        return (byRules(text), .rules(reason: reasons.joined(separator: ". ") + ". Разобрано правилами"))
+    }
+
+    /// Задача из ответа модели (Claude или Apple): пустая строка и 0 — «не сказано».
+    static func draft(title rawTitle: String, day: String, start rawStart: String, durationMinutes: Int,
+                      important: Int, urgent: Int, project rawProject: String) -> DraftTask? {
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard SpeechCleanup.isMeaningful(title) else { return nil }
+        var dayOffset: Int?
+        let dayText = day.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !dayText.isEmpty {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.calendar = DayMath.calendar
+            formatter.timeZone = DayMath.calendar.timeZone
+            formatter.dateFormat = "yyyy-MM-dd"
+            if let date = formatter.date(from: dayText) {
+                dayOffset = DayMath.offset(of: date)
+            }
+        }
+        var start: Int?
+        let parts = rawStart.split(separator: ":").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        if parts.count == 2, (0..<24).contains(parts[0]), (0..<60).contains(parts[1]) {
+            start = ClockGrid.snapped(parts[0] * 60 + parts[1])
+        }
+        if start != nil, dayOffset == nil { dayOffset = 0 }
+        var duration = max(15, min(8 * 60, ClockGrid.snapped(durationMinutes > 0 ? durationMinutes : 30)))
+        if let start { duration = max(15, min(duration, ClockGrid.dayEnd - start)) }
+        var quadrant: Quadrant?
+        if important != 0 || urgent != 0 {
+            quadrant = Quadrant(important: important > 0, urgent: urgent > 0)
+        }
+        let project = rawProject.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsed = ParsedTask(
+            title: SpeechCleanup.capitalized(title),
+            dayOffset: dayOffset,
+            start: start,
+            duration: duration,
+            quadrant: quadrant,
+            project: project.isEmpty ? nil : project
+        )
+        return DraftTask(parsed: parsed)
     }
 
     /// Одинаковые задачи (то же название, день и время) оставляем по одной.
@@ -63,7 +120,7 @@ enum OnDeviceExtractor {
 
         var note: String {
             switch self {
-            case .available: return "Apple Intelligence на устройстве — доступен, разбор по смыслу"
+            case .available: return "Apple Intelligence на устройстве включён, но русский язык моделью Apple официально не поддерживается — iOS обычно отказывает"
             case .unavailable(let reason): return reason
             }
         }
@@ -78,10 +135,10 @@ enum OnDeviceExtractor {
             return .available
         case .unavailable(let reason):
             switch reason {
-            case .deviceNotEligible: return .unavailable("iOS сообщает: этот iPhone не поддерживает Apple Intelligence — пока разбор правилами")
-            case .appleIntelligenceNotEnabled: return .unavailable("iOS сообщает: Apple Intelligence выключен. Включи в Настройках iOS → Apple Intelligence и Siri — тогда разбор пойдёт моделью")
-            case .modelNotReady: return .unavailable("iOS сообщает: модель Apple Intelligence ещё загружается — пока разбор правилами")
-            @unknown default: return .unavailable("iOS сообщает: Apple Intelligence недоступен — пока разбор правилами")
+            case .deviceNotEligible: return .unavailable("Apple Intelligence: этот iPhone его не поддерживает")
+            case .appleIntelligenceNotEnabled: return .unavailable("Apple Intelligence выключен в Настройках iOS → Apple Intelligence и Siri")
+            case .modelNotReady: return .unavailable("Apple Intelligence: модель ещё загружается")
+            @unknown default: return .unavailable("Apple Intelligence недоступен")
             }
         }
     }
@@ -148,56 +205,26 @@ enum OnDeviceExtractor {
     static func extract(_ transcript: String) async throws -> [DraftTask] {
         let session = LanguageModelSession(instructions: instructions(today: Date()))
         let response = try await session.respond(to: "Расшифровка:\n\(transcript)", generating: TaskList.self)
-        return response.content.tasks.compactMap(draft(from:))
+        return response.content.tasks.compactMap { task in
+            TaskExtractor.draft(
+                title: task.title, day: task.day, start: task.start, durationMinutes: task.durationMinutes,
+                important: task.important, urgent: task.urgent, project: task.project
+            )
+        }
     }
 
     /// Честно: что именно ответила система, чтобы было понятно, почему разбирали правилами.
     static func message(for error: Error, status: Status) -> String {
         if let generation = error as? LanguageModelSession.GenerationError {
             switch generation {
-            case .unsupportedLanguageOrLocale: return "iOS отказал: «язык не поддерживается» — разобрано правилами"
-            case .exceededContextWindowSize: return "Диктовка слишком длинная для Apple Intelligence — разобрано правилами"
-            case .guardrailViolation: return "Apple Intelligence отказался от этого текста (фильтр) — разобрано правилами"
-            default: return "Apple Intelligence: \(generation.localizedDescription) — разобрано правилами"
+            case .unsupportedLanguageOrLocale:
+                return "Apple Intelligence: iOS отказал — русский язык моделью Apple не поддерживается"
+            case .exceededContextWindowSize: return "Apple Intelligence: диктовка слишком длинная"
+            case .guardrailViolation: return "Apple Intelligence отказался от этого текста (фильтр)"
+            default: return "Apple Intelligence: \(generation.localizedDescription)"
             }
         }
         if case .unavailable(let reason) = status { return reason }
-        return "Apple Intelligence: \(error.localizedDescription) — разобрано правилами"
-    }
-
-    private static func draft(from task: ExtractedTask) -> DraftTask? {
-        let title = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard SpeechCleanup.isMeaningful(title) else { return nil }
-        var dayOffset: Int?
-        if !task.day.isEmpty {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            formatter.timeZone = DayMath.calendar.timeZone
-            if let date = formatter.date(from: task.day) {
-                dayOffset = DayMath.offset(of: date)
-            }
-        }
-        var start: Int?
-        let parts = task.start.split(separator: ":").compactMap { Int($0) }
-        if parts.count == 2, (0..<24).contains(parts[0]), (0..<60).contains(parts[1]) {
-            start = ClockGrid.snapped(parts[0] * 60 + parts[1])
-        }
-        if start != nil, dayOffset == nil { dayOffset = 0 }
-        var duration = max(15, min(8 * 60, ClockGrid.snapped(task.durationMinutes > 0 ? task.durationMinutes : 30)))
-        if let start { duration = max(15, min(duration, ClockGrid.dayEnd - start)) }
-        var quadrant: Quadrant?
-        if task.important != 0 || task.urgent != 0 {
-            quadrant = Quadrant(important: task.important > 0, urgent: task.urgent > 0)
-        }
-        let project = task.project.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parsed = ParsedTask(
-            title: SpeechCleanup.capitalized(title),
-            dayOffset: dayOffset,
-            start: start,
-            duration: duration,
-            quadrant: quadrant,
-            project: project.isEmpty ? nil : project
-        )
-        return DraftTask(parsed: parsed)
+        return "Apple Intelligence: \(error.localizedDescription)"
     }
 }
