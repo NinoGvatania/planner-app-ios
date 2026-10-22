@@ -186,7 +186,7 @@ struct VoiceInputSheet: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Tokens.caption)
             if !ClaudeSettings.isEnabled {
-                Text("Без Claude разбор идёт по правилам: точка, пауза, «а ещё», «потом», «и» между действиями. Свой ключ Claude — в «…» → «Настройки…».")
+                Text("Без Claude — Apple Intelligence, если iOS не откажет (русский он официально не знает), иначе правила: точка, пауза, «а ещё», «потом», «и» между действиями. Свой ключ Claude — в «…» → «Настройки…».")
                     .font(.system(size: 12.5))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Tokens.muted)
@@ -285,7 +285,8 @@ struct VoiceInputSheet: View {
             drafts.append(contentsOf: result.drafts)
             switch result.source {
             case .claude(let model): sourceNote = "Разобрано Claude · " + ClaudeSettings.title(of: model)
-            case .apple: sourceNote = "Разобрано Apple Intelligence на устройстве"
+            case .apple(let reason):
+                sourceNote = (reason.map { $0 + ". " } ?? "") + "Разобрано Apple Intelligence на устройстве"
             case .rules(let reason): sourceNote = reason ?? "Разобрано правилами"
             }
             stage = .review

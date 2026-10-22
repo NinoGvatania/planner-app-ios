@@ -8,9 +8,9 @@ enum ClaudeSettings {
     static let modelKey = "claudeModel"
     static let defaultModel = "claude-opus-5-5"
     static let models: [(id: String, title: String)] = [
-        ("claude-opus-5-5", "Opus 5.5 — точнее всех"),
-        ("claude-sonnet-5-5", "Sonnet 5.5 — быстрее"),
-        ("claude-haiku-5-5", "Haiku 5.5 — самый быстрый и дешёвый"),
+        ("claude-opus-5-5", "Opus 5.5 — точнее всех, пара центов за диктовку"),
+        ("claude-sonnet-5-5", "Sonnet 5.5 — быстрее, около цента"),
+        ("claude-haiku-5-5", "Haiku 5.5 — самый быстрый, доли цента"),
     ]
 
     static var apiKey: String { KeychainStore.read(keyAccount) ?? "" }
@@ -129,8 +129,8 @@ enum ClaudeExtractor {
         «то же самое») раскрывай в явные имена и предметы из текста.
         5. Выдели смысл. title — суть: коротко (обычно до шести слов), глагол в неопределённой форме первым \
         («Позвонить маме», «Записаться к стоматологу»), без точки в конце. note — важные подробности: что \
-        именно, кому, сколько, номер, адрес, список, причина, срок вроде «до обеда», расплывчатое время вроде \
-        «утром» или «после работы». Коротко, без воды; нет подробностей — пустая строка.
+        именно, кому, сколько, номер, адрес, список, причина, срок вроде «до обеда» или «до пятницы». \
+        Коротко, без воды; нет подробностей — пустая строка.
         6. Ничего не выдумывай: только сказанное или то, что явно следует из контекста. Рассуждения, эмоции, \
         приветствия и комментарии пропускай; но намерение внутри рассуждения («надо бы наконец записаться \
         к врачу») — это задача.
@@ -139,9 +139,13 @@ enum ClaudeExtractor {
         - day: «сегодня», «завтра», «послезавтра», день недели (ближайший будущий) и даты переводи \
         в YYYY-MM-DD по списку выше; не назван — пустая строка. Срок «до пятницы» — это не день задачи: \
         day пустой, срок — в note.
-        - start: точное время начала «HH:MM» в 24-часовом формате («в 10» → 10:00, «в половине третьего \
-        дня» → 14:30, «в семь вечера» → 19:00); расплывчатое время («утром», «вечером») — не start, а note; \
-        не названо — пустая строка.
+        - start: время начала «HH:MM» в 24-часовом формате, по тем же правилам, что у быстрого ввода:
+          «в 9:30» → 09:30, «в 10» → 10:00, «в час дня» → 13:00, «в 12 ночи» → 00:00;
+          число от 1 до 6 без уточнения — после полудня: «в 3» → 15:00, «в пять» → 17:00, \
+        «в половине третьего» → 14:30;
+          «утром», «днём», «вечером», «ночью» без числа → 09:00, 14:00, 19:00, 23:00; с числом они задают \
+        половину суток: «вечером в 7» → 19:00, «в 7 утра» → 07:00;
+          время не названо — пустая строка.
         - durationMinutes: только если длительность названа («на час» → 60, «минут на сорок» → 40); иначе 0.
         - important / urgent: 1 — прямо сказано «важно» / «срочно», -1 — «не важно» / «не срочно», иначе 0.
         - project: название после «по проекту …» или «#…»; иначе пустая строка.
@@ -160,7 +164,8 @@ enum ClaudeExtractor {
         guard !apiKey.isEmpty else { throw ExtractError.noKey }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.timeoutInterval = 60
+        // Ответ без потоковой передачи приходит целиком, когда модель закончит, — ждём с запасом.
+        request.timeoutInterval = 180
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(version, forHTTPHeaderField: "anthropic-version")
@@ -169,7 +174,8 @@ enum ClaudeExtractor {
             "max_tokens": 16000,
             "system": systemPrompt(today: Date()),
             "messages": [["role": "user", "content": "Расшифровка:\n\(transcript)"]],
-            "output_config": ["format": ["type": "json_schema", "schema": schema]],
+            // Средняя глубина размышлений: на контекст и смысл хватает, а ждать и платить меньше.
+            "output_config": ["effort": "medium", "format": ["type": "json_schema", "schema": schema]],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -208,18 +214,22 @@ enum ClaudeExtractor {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return "Непонятный ответ сервера" }
-            if (200..<300).contains(http.statusCode) { return "Ключ работает, модель \(ClaudeSettings.title(of: model)) доступна" }
+            if (200..<300).contains(http.statusCode) {
+                return "Ключ принят, модель \(ClaudeSettings.title(of: model)) доступна. Баланс так не проверить — он проверится при первом разборе"
+            }
             return message(for: ExtractError.http(http.statusCode, errorMessage(in: data)))
         } catch {
             return message(for: error)
         }
     }
 
-    /// Текст ошибки из тела ответа API: {"type":"error","error":{"type":…,"message":…}}.
+    /// Тип и текст ошибки из тела ответа API: {"type":"error","error":{"type":…,"message":…}} → «тип: текст».
     private static func errorMessage(in data: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let error = json["error"] as? [String: Any] else { return nil }
-        return error["message"] as? String
+        let type = error["type"] as? String ?? ""
+        let message = error["message"] as? String ?? ""
+        return type.isEmpty ? message : type + ": " + message
     }
 
     /// Что сказать пользователю.
@@ -227,7 +237,14 @@ enum ClaudeExtractor {
         if let error = error as? ExtractError {
             switch error {
             case .noKey: return "Claude: ключ не задан"
-            case .http(401, _), .http(403, _): return "Claude: ключ не принят — проверь его в настройках"
+            case .http(401, _): return "Claude: ключ не принят — проверь его в настройках"
+            case .http(402, _): return "Claude: на балансе API нет средств — пополни на console.anthropic.com"
+            case .http(400, let message?) where message.localizedCaseInsensitiveContains("credit balance")
+                || message.contains("billing_error"):
+                return "Claude: на балансе API нет средств — пополни на console.anthropic.com"
+            case .http(403, let message):
+                return "Claude: доступ запрещён (403) — API недоступен для этого аккаунта или региона"
+                    + (message.map { ". Ответ сервера: \($0)" } ?? "")
             case .http(404, _): return "Claude: модель недоступна для этого ключа — выбери другую в настройках"
             case .http(429, _): return "Claude: превышен лимит запросов — попробуй через минуту"
             case .http(529, _), .http(503, _): return "Claude перегружен — попробуй чуть позже"

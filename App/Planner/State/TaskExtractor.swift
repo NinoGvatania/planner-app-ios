@@ -12,8 +12,8 @@ enum TaskExtractor {
     enum Source: Equatable {
         /// Claude, модель `model`.
         case claude(model: String)
-        /// Apple Intelligence на устройстве.
-        case apple
+        /// Apple Intelligence на устройстве; `reason` — почему не Claude (если пробовали).
+        case apple(reason: String?)
         /// Правила; `reason` — почему не модель.
         case rules(reason: String?)
     }
@@ -38,7 +38,7 @@ enum TaskExtractor {
         let status = OnDeviceExtractor.status
         do {
             let drafts = dedupe(try await OnDeviceExtractor.extract(text))
-            if !drafts.isEmpty { return (drafts, .apple) }
+            if !drafts.isEmpty { return (drafts, .apple(reason: reasons.isEmpty ? nil : reasons.joined(separator: ". "))) }
             reasons.append("Apple Intelligence не нашёл задач")
         } catch {
             reasons.append(OnDeviceExtractor.message(for: error, status: status))
@@ -197,13 +197,16 @@ enum OnDeviceExtractor {
         - Never invent tasks. Skip phrases that are not tasks (comments, interjections).
         - day: resolve «сегодня», «завтра», «послезавтра», weekday names (the nearest future one) and dates
           to YYYY-MM-DD; otherwise empty string.
-        - start: 24-hour HH:MM when a time is said («в 10», «в половине третьего» → 14:30); otherwise empty.
+        - start: 24-hour HH:MM when a time is said: «в 10» → 10:00, «в час дня» → 13:00, «в 12 ночи» → 00:00;
+          a bare hour from 1 to 6 means afternoon («в 3» → 15:00, «в половине третьего» → 14:30);
+          «утром/днём/вечером/ночью» without a number → 09:00/14:00/19:00/23:00, with a number they pick the
+          half of the day («вечером в 7» → 19:00); otherwise empty.
         - durationMinutes: only when said («на час» → 60); otherwise 0.
         - important / urgent: 1 only when the user explicitly says «важно» / «срочно», -1 for «не важно» /
           «не срочно», otherwise 0.
         - project: the name after «по проекту …» or «#…»; otherwise empty.
         - note: important details in Russian (what exactly, to whom, how many, a list, a deadline such as
-          «до обеда», a vague time such as «утром»); otherwise empty. The title keeps only the essence.
+          «до обеда»); otherwise empty. The title keeps only the essence.
         Answer only with the structured result.
         """
     }
@@ -221,6 +224,8 @@ enum OnDeviceExtractor {
 
     /// Честно: что именно ответила система, чтобы было понятно, почему разбирали правилами.
     static func message(for error: Error, status: Status) -> String {
+        // Система заранее сказала, почему модели нет, — это понятнее общего текста ошибки.
+        if case .unavailable(let reason) = status { return reason }
         if let generation = error as? LanguageModelSession.GenerationError {
             switch generation {
             case .unsupportedLanguageOrLocale:
@@ -230,7 +235,6 @@ enum OnDeviceExtractor {
             default: return "Apple Intelligence: \(generation.localizedDescription)"
             }
         }
-        if case .unavailable(let reason) = status { return reason }
         return "Apple Intelligence: \(error.localizedDescription)"
     }
 }

@@ -53,13 +53,21 @@ struct SettingsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") { dismiss() }
+                    Button("Готово") {
+                        // Вставленный, но не сохранённый ключ не теряется.
+                        saveClaudeKey()
+                        dismiss()
+                    }
                 }
             }
         }
         .tint(Tokens.accent)
         .presentationDetents([.large])
         .presentationBackground(Tokens.panel)
+        .onDisappear {
+            // Закрыли лист свайпом — вставленный ключ всё равно сохраняется.
+            saveClaudeKey()
+        }
         .onAppear {
             if calendarAccess { calendars = CalendarSync.writableCalendars() }
         }
@@ -88,13 +96,16 @@ struct SettingsSheet: View {
 
     private var engineTitle: String {
         if claudeHasKey && claudeEnabled { return "Claude · " + ClaudeSettings.title(of: claudeModel) }
-        return OnDeviceExtractor.status == .available ? "Apple Intelligence" : "правила"
+        return OnDeviceExtractor.status == .available ? "Apple Intelligence, если iOS не откажет, иначе правила" : "правила"
     }
 
     private var claudeSection: some View {
         Section {
-            Toggle("Разбирать через Claude", isOn: $claudeEnabled)
-                .disabled(!claudeHasKey)
+            Toggle("Разбирать через Claude", isOn: Binding(
+                get: { claudeHasKey && claudeEnabled },
+                set: { claudeEnabled = $0 }
+            ))
+            .disabled(!claudeHasKey)
             SecureField(claudeHasKey ? "Ключ сохранён · ввести новый" : "Ключ API: sk-ant-…", text: $claudeKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -134,7 +145,7 @@ struct SettingsSheet: View {
         } header: {
             Text("Claude — свой ключ API")
         } footer: {
-            Text("Ключ создаётся на console.anthropic.com → API Keys (нужен пополненный баланс; подписка Claude Pro/Max для API не подходит). Хранится только в связке ключей этого iPhone. Надиктованный текст уходит на api.anthropic.com только при разборе диктовки; одна диктовка стоит доли цента. Без сети или при ошибке разбор идёт дальше по порядку.")
+            Text("Ключ создаётся на console.anthropic.com → API Keys (нужен пополненный баланс; подписка Claude Pro/Max для API не подходит). Хранится только в связке ключей этого iPhone. Надиктованный текст уходит на api.anthropic.com только при разборе диктовки. Цена диктовки: Haiku — доли цента, Sonnet — около цента, Opus — пара центов. Без сети или при ошибке разбор идёт дальше по порядку.")
         }
     }
 
