@@ -622,7 +622,8 @@ struct MatrixView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassEffect(.regular.tint(hovered ? Tokens.accent.opacity(0.35) : style.background.opacity(0.9)), in: RoundedRectangle(cornerRadius: 18))
+        // Фон ровно по форме рамки (стекло рисовало подложку шире рамки).
+        .background(hovered ? Tokens.accent.opacity(0.22) : style.background, in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(hovered ? Tokens.accent : style.border, lineWidth: hovered ? 2.5 : 1.5))
         .scaleEffect(hovered ? 1.02 : 1)
         .animation(.easeOut(duration: 0.12), value: hovered)

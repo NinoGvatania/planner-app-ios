@@ -6,8 +6,10 @@ import UIKit
 /// строка ввода — ничего не торчит), открыта (до 6 строк) и на весь экран. Тап по заголовку
 /// открывает и сворачивает; свайп тянет за пальцем и отпускает к ближайшему положению.
 /// Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
-/// Жест удержания висит на контейнере списка, а не на строках: строка List может быть уничтожена,
-/// когда панель сворачивается в начале переноса, и жест вместе с ней.
+/// Жест удержания висит на каждой строке: задачу знает сам жест, без поиска строки по рамкам
+/// (рамки ячеек List устаревают — новая строка или сдвиг панели при закрытии клавиатуры, и перенос
+/// не начинался). Чтобы строку не уничтожило, когда панель сворачивается в начале переноса,
+/// список на время переноса сохраняет свою высоту и только обрезается панелью.
 struct BacklogDrawerView: View {
     let tasks: [PlannerTask]
     @Binding var isOpen: Bool
@@ -38,9 +40,9 @@ struct BacklogDrawerView: View {
     @State private var drawerWidth: CGFloat = 0
     /// Панель раскрыта на весь экран.
     @State private var isFull = false
-    /// Рамки строк в координатах «planner» — чтобы понять, какую задачу взяли удержанием.
-    @State private var rowFrames: [UUID: CGRect] = [:]
-    @State private var draggingTask: PlannerTask?
+    /// Высота списка в момент, когда взяли задачу: пока её тянут, список не сжимается вместе с панелью,
+    /// ячейка со строкой и её жестом остаётся жива.
+    @State private var frozenListHeight: CGFloat?
 
     private let rowHeight: CGFloat = 66
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
@@ -78,6 +80,9 @@ struct BacklogDrawerView: View {
         min(fullHeight, max(collapsedHeight, restHeight - dragDelta))
     }
 
+    /// Видимая часть списка между заголовком и строкой ввода.
+    private var visibleListHeight: CGFloat { max(0, height - Tokens.drawerCollapsed) }
+
     private var hint: String? {
         guard let drag = drag else { return nil }
         if drag.target == .backlog { return drag.fromTimeline ? "Отпусти — уберу сюда" : "Отпусти — оставлю здесь" }
@@ -88,31 +93,9 @@ struct BacklogDrawerView: View {
         VStack(spacing: 0) {
             header
             list
-                .frame(height: max(0, height - Tokens.drawerCollapsed), alignment: .top)
+                .frame(height: frozenListHeight ?? visibleListHeight, alignment: .top)
+                .frame(height: visibleListHeight, alignment: .top)
                 .clipped()
-                .contentShape(Rectangle())
-                .onPreferenceChange(BacklogRowFramesKey.self) { rowFrames = $0 }
-                .gesture(
-                    HoldDragGesture(
-                        onChanged: { location, start in
-                            if draggingTask == nil {
-                                guard let task = tasks.first(where: { rowFrames[$0.id]?.contains(start) == true }) else { return }
-                                draggingTask = task
-                            }
-                            if let task = draggingTask {
-                                onDragChanged(task, location, start)
-                            }
-                        },
-                        onEnded: {
-                            if draggingTask != nil { onDragEnded() }
-                            draggingTask = nil
-                        },
-                        onCancelled: {
-                            if draggingTask != nil { (onDragCancelled ?? onDragEnded)() }
-                            draggingTask = nil
-                        }
-                    )
-                )
             inputRow
         }
         .frame(maxWidth: .infinity)
@@ -137,6 +120,10 @@ struct BacklogDrawerView: View {
         }
         .onChange(of: isOpen) { _, open in
             if !open { isFull = false }
+        }
+        .onChange(of: drag?.taskID) { _, id in
+            // Перенос закончился где угодно (в том числе сбросом экрана) — список снова по высоте панели.
+            if id == nil { frozenListHeight = nil }
         }
     }
 
@@ -291,10 +278,22 @@ struct BacklogDrawerView: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .background(
-            GeometryReader { geometry in
-                Color.clear.preference(key: BacklogRowFramesKey.self, value: [task.id: geometry.frame(in: .named("planner"))])
-            }
+        .gesture(
+            HoldDragGesture(
+                onChanged: { location, start in
+                    // Первое срабатывание: запомнить высоту списка, пока панель ещё не начала сворачиваться.
+                    if frozenListHeight == nil { frozenListHeight = visibleListHeight }
+                    onDragChanged(task, location, start)
+                },
+                onEnded: {
+                    onDragEnded()
+                    frozenListHeight = nil
+                },
+                onCancelled: {
+                    (onDragCancelled ?? onDragEnded)()
+                    frozenListHeight = nil
+                }
+            )
         )
     }
 
@@ -338,13 +337,5 @@ struct BacklogDrawerView: View {
         .padding(.top, 8)
         .frame(height: 60, alignment: .top)
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1) }
-    }
-}
-
-/// Рамки строк бэклога в координатах «planner»; живут внутри панели и не трогают экран.
-struct BacklogRowFramesKey: PreferenceKey {
-    static var defaultValue: [UUID: CGRect] { [:] }
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
     }
 }

@@ -564,7 +564,8 @@ struct PlannerScreen: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, toast.actionTitle == nil ? 10 : 2)
-        .glassEffect(.regular.tint(Tokens.badge.opacity(0.7)), in: RoundedRectangle(cornerRadius: 14))
+        // Сплошной фон по форме обводки (как у плашки переноса): стекло с тенью выходило за рамку.
+        .background(Tokens.badge, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
         .shadow(color: Color.black.opacity(0.4), radius: 12, y: 8)
         .allowsHitTesting(toast.actionTitle != nil)
@@ -586,7 +587,9 @@ struct PlannerScreen: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .frame(width: 210, alignment: .leading)
-            .glassEffect(.regular.tint(Tokens.badge.opacity(0.8)), in: RoundedRectangle(cornerRadius: 14))
+            // Сплошной фон ровно по форме рамки, как в прототипе: стекло рисовало серую подложку
+            // больше самой плашки, и она торчала за зелёной рамкой.
+            .background(Tokens.badge, in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(drag.target == nil ? Color(hex: 0x4A4B52) : Tokens.accent, lineWidth: 1.5))
             .shadow(color: Color.black.opacity(0.55), radius: 17, y: 16)
             .rotationEffect(.degrees(-2))
