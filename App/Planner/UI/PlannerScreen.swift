@@ -527,7 +527,7 @@ struct PlannerScreen: View {
                 get: { allDayExpandedDays == days },
                 set: { allDayExpandedDays = $0 ? days : nil }
             ),
-            bottomInset: islandInset
+            islandInset: islandInset
         )
     }
 
