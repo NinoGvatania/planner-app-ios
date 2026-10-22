@@ -2,21 +2,28 @@ import Foundation
 import PlannerCore
 import SwiftData
 
-/// Рутины: шаблон `Routine` порождает задачу с `isRoutine = true` на каждый подходящий день
-/// ближайшей недели. Включение рутины у задачи создаёт шаблон, выключение — удаляет шаблон
+/// Рутины: шаблон `Routine` порождает задачу с `isRoutine = true` на каждый подходящий день —
+/// на неделю вперёд и до конца периода, который сейчас открыт (листаешь месяц вперёд — копии
+/// появляются и там). Включение рутины у задачи создаёт шаблон, выключение — удаляет шаблон
 /// и будущие невыполненные копии. Шаблон помнит, по какой день копии уже созданы, поэтому
 /// удалённая или перенесённая копия не возвращается.
 enum RoutineManager {
-    /// На сколько дней вперёд создаются копии рутин.
+    /// На сколько дней вперёд копии рутин есть всегда.
     static let horizon = 7
+    /// Дальше этого копии не создаются, даже если открыт следующий год.
+    static let maxAhead = 400
 
-    /// Досоздать копии рутин на сегодня и неделю вперёд (при запуске и возврате в приложение).
+    /// Досоздать копии рутин на неделю вперёд и до дня `through` включительно (последний день
+    /// открытого периода). Вызывается при запуске, возврате в приложение и при листании периодов.
     /// Возвращает созданные задачи.
     @discardableResult
-    static func materialize(in context: ModelContext) -> [PlannerTask] {
+    static func materialize(in context: ModelContext, through: Date? = nil) -> [PlannerTask] {
         guard let routines = try? context.fetch(FetchDescriptor<Routine>()), !routines.isEmpty else { return [] }
         let today = DayMath.today()
-        let horizonEnd = DayMath.day(offset: horizon)
+        var horizonEnd = DayMath.day(offset: horizon)
+        if let through {
+            horizonEnd = max(horizonEnd, min(DayMath.calendar.startOfDay(for: through), DayMath.day(offset: maxAhead)))
+        }
         let existing = (try? context.fetch(FetchDescriptor<PlannerTask>(predicate: #Predicate<PlannerTask> { $0.isRoutine }))) ?? []
         var present = Set(existing.compactMap { task -> String? in
             guard let day = task.day, day >= today, day <= horizonEnd else { return nil }
@@ -45,7 +52,10 @@ enum RoutineManager {
                 context.insert(task)
                 created.append(task)
             }
-            routine.materializedThrough = horizonEnd
+            // Только вперёд: вернулись к текущей неделе после следующего года — уже созданное не пересоздаётся.
+            if routine.materializedThrough.map({ $0 < horizonEnd }) ?? true {
+                routine.materializedThrough = horizonEnd
+            }
         }
         return created
     }

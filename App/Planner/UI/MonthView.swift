@@ -76,7 +76,7 @@ struct MonthView: View {
             ForEach(0..<7, id: \.self) { column in
                 Text(DayMath.weekdayShort[(column + 1) % 7])
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(column >= 5 ? Tokens.muted : Tokens.caption)
+                    .foregroundStyle(column >= 5 ? Tokens.weekend.opacity(0.85) : Tokens.caption)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -106,7 +106,7 @@ struct MonthView: View {
         let date = DayMath.day(offset: offset)
         let inMonth = DayMath.monthIndex(date) == monthIndex
         let today = offset == 0
-        let weekend = DayMath.weekdayIndex(date) == 0 || DayMath.weekdayIndex(date) == 6
+        let weekend = DayMath.isWeekend(date)
         let hovered = live && drag?.target == .dayTab(offset: offset)
         let slots = chipSlots(height: height)
         // Не влезают все — последняя строка отдаётся под «+N» (14 pt вместо 21).
@@ -117,7 +117,7 @@ struct MonthView: View {
                 Text("\(DayMath.dayOfMonth(date))")
                     .font(.system(size: 13, weight: today ? .bold : .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(today ? Tokens.onAccent : (inMonth ? (weekend ? Tokens.caption : Tokens.text) : Tokens.muted.opacity(0.6)))
+                    .foregroundStyle(today ? Tokens.onAccent : (inMonth ? (weekend ? Tokens.weekend : Tokens.text) : (weekend ? Tokens.weekend.opacity(0.4) : Tokens.muted.opacity(0.6))))
                     .frame(width: 24, height: 24)
                     .background(today ? Tokens.accent : Color.clear, in: Circle())
                     .padding(.leading, 2)

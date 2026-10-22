@@ -56,7 +56,7 @@ struct YearView: View {
                                     Text("\(DayMath.dayOfMonth(date))")
                                         .font(.system(size: 11, weight: date == today ? .bold : .regular))
                                         .monospacedDigit()
-                                        .foregroundStyle(date == today ? Tokens.onAccent : (column >= 5 ? Tokens.muted : Tokens.caption))
+                                        .foregroundStyle(date == today ? Tokens.onAccent : (column >= 5 ? Tokens.weekend.opacity(0.85) : Tokens.caption))
                                     if marked.contains(date), date != today {
                                         Circle().fill(Tokens.accent).frame(width: 3, height: 3).offset(y: 8)
                                     }

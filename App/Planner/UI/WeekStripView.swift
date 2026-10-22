@@ -284,10 +284,13 @@ struct WeekStripView: View {
         return VStack(spacing: 3) {
             Text(DayMath.weekdayShort[DayMath.weekdayIndex(date)])
                 .font(.system(size: 11))
-                .foregroundStyle(onLens ? Tokens.onAccent : Tokens.muted)
+                .foregroundStyle(onLens ? Tokens.onAccent
+                                 : (DayMath.isWeekend(date) ? Tokens.weekend.opacity(offset < 0 ? 0.5 : 0.8) : Tokens.muted))
             Text("\(DayMath.dayOfMonth(date))")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(onLens ? Tokens.onAccent : (offset == 0 ? Tokens.accent : (offset < 0 ? Tokens.muted : Tokens.text)))
+                .foregroundStyle(onLens ? Tokens.onAccent
+                                 : (offset == 0 ? Tokens.accent
+                                    : Tokens.dayNumber(isToday: false, isWeekend: DayMath.isWeekend(date), isPast: offset < 0)))
             Circle()
                 .fill(hasDot ? (onLens ? Tokens.onAccent : Color(hex: 0x5A5B63)) : Color.clear)
                 .frame(width: 4, height: 4)

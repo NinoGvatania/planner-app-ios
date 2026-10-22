@@ -44,13 +44,13 @@ struct MatrixView: View {
     /// Задачи периода из календаря (бэклога здесь нет) — по дате и времени.
     private func items(for quadrant: Quadrant) -> [PlannerTask] {
         tasks
-            .filter { !$0.isDone && !$0.isRoutine && $0.quadrantRaw == quadrant.rawValue }
+            .filter { !$0.isDone && $0.quadrantRaw == quadrant.rawValue }
             .sorted(by: Self.byDate)
     }
 
     private var unsortedTasks: [PlannerTask] {
         tasks
-            .filter { !$0.isDone && !$0.isRoutine && !$0.isSorted }
+            .filter { !$0.isDone && !$0.isSorted }
             .sorted(by: Self.byDate)
     }
 

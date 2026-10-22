@@ -115,6 +115,13 @@ struct PlannerScreen: View {
 
     private func clampDay(_ value: Int) -> Int { max(-3650, min(3650, value)) }
 
+    /// Копии рутин — на неделю вперёд и до конца открытого периода.
+    @discardableResult
+    private func materializeRoutines() -> [PlannerTask] {
+        let lastDay = DayMath.calendar.date(byAdding: .day, value: -1, to: currentRange.end) ?? currentRange.end
+        return RoutineManager.materialize(in: context, through: lastDay)
+    }
+
     /// Границы периода страницы `index`: [start, end).
     private func pageRange(index: Int) -> (start: Date, end: Date) {
         switch period {
@@ -307,15 +314,20 @@ struct PlannerScreen: View {
         .task {
             SeedData.seedIfNeeded(in: context)
             SeedData.assignProjectColorsIfNeeded(in: context)
-            let created = RoutineManager.materialize(in: context)
+            let created = materializeRoutines()
             NotificationScheduler.requestPermission()
             NotificationScheduler.sync(tasks + created)
         }
         .onChange(of: scenePhase) { _, phase in
             // Вернулись в приложение (возможно, уже другой день): досоздать рутины, обновить напоминания.
             guard phase == .active else { return }
-            let created = RoutineManager.materialize(in: context)
+            let created = materializeRoutines()
             NotificationScheduler.sync(tasks + created)
+        }
+        // Листаешь периоды вперёд — рутины появляются и там, а не только на ближайшей неделе.
+        .onChange(of: currentRange.end) { _, _ in
+            let created = materializeRoutines()
+            if !created.isEmpty { NotificationScheduler.sync(tasks + created) }
         }
         .onChange(of: period) { _, _ in resetInteraction() }
         .onChange(of: display) { _, _ in resetInteraction() }

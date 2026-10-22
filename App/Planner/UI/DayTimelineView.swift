@@ -262,10 +262,12 @@ struct DayTimelineView: View {
                 VStack(spacing: 2) {
                     Text(DayMath.weekdayShort[DayMath.weekdayIndex(date)])
                         .font(.system(size: 11))
-                        .foregroundStyle(offset == 0 ? Tokens.accent : (offset < 0 ? Tokens.muted : Tokens.caption))
+                        .foregroundStyle(offset == 0 ? Tokens.accent
+                                         : (DayMath.isWeekend(date) ? Tokens.weekend.opacity(offset < 0 ? 0.5 : 0.85)
+                                            : (offset < 0 ? Tokens.muted : Tokens.caption)))
                     Text("\(DayMath.dayOfMonth(date))")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(offset == 0 ? Tokens.onAccent : (offset < 0 ? Tokens.muted : Tokens.text))
+                        .foregroundStyle(Tokens.dayNumber(isToday: offset == 0, isWeekend: DayMath.isWeekend(date), isPast: offset < 0))
                         .frame(minWidth: 28, minHeight: 28)
                         .background(offset == 0 ? Tokens.accent : Color.clear, in: Capsule())
                 }

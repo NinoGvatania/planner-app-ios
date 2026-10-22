@@ -18,6 +18,15 @@ enum Tokens {
     static let overdueBadge = Color(hex: 0xFF6159)
     static let overdueChip = Color(hex: 0x3A1D1B)
     static let line = Color.white.opacity(0.08)
+    /// Числа выходных (сб, вс) в календаре.
+    static let weekend = Color(hex: 0xFF6B61)
+
+    /// Цвет числа дня: сегодня — на акценте, выходные — красные, прошедшие — приглушённые.
+    static func dayNumber(isToday: Bool, isWeekend: Bool, isPast: Bool) -> Color {
+        if isToday { return onAccent }
+        if isWeekend { return isPast ? weekend.opacity(0.55) : weekend }
+        return isPast ? muted : text
+    }
 
     static let hourHeight: CGFloat = 56
     static let gutter: CGFloat = 52

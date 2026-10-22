@@ -33,7 +33,7 @@ struct ProjectsView: View {
     /// Задачи проекта за период из календаря (бэклога здесь нет): открытые выше, дальше по дате и времени.
     private func items(in name: String?) -> [PlannerTask] {
         tasks
-            .filter { !$0.isRoutine && $0.project?.name == name }
+            .filter { $0.project?.name == name }
             .sorted { a, b in
                 if a.isDone != b.isDone { return !a.isDone }
                 let da = a.day ?? .distantFuture, db = b.day ?? .distantFuture

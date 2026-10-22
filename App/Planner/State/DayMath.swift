@@ -77,6 +77,12 @@ enum DayMath {
         calendar.component(.weekday, from: date) - 1
     }
 
+    /// Суббота или воскресенье.
+    static func isWeekend(_ date: Date) -> Bool {
+        let index = weekdayIndex(date)
+        return index == 0 || index == 6
+    }
+
     static func dayOfMonth(_ date: Date) -> Int {
         calendar.component(.day, from: date)
     }
