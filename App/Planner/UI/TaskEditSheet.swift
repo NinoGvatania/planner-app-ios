@@ -47,6 +47,9 @@ struct TaskEditSheet: View {
                 Section {
                     TextField("Название", text: $task.title)
                         .font(.system(size: 17))
+                    TextField("Заметка: подробности, список, «до обеда»…", text: $task.notes, axis: .vertical)
+                        .font(.system(size: 15))
+                        .lineLimit(1...6)
                 }
                 Section("Когда") {
                     Picker("День", selection: dayBinding) {
@@ -163,6 +166,7 @@ struct TaskEditSheet: View {
         .onAppear { projectName = task.project?.name ?? "" }
         .onDisappear { if !task.isDeleted { applyProject() } }
         .onChange(of: task.title) { _, _ in onChanged() }
+        .onChange(of: task.notes) { _, _ in onChanged() }
         .onChange(of: task.duration) { _, _ in onChanged() }
         .onChange(of: task.quadrantRaw) { _, _ in
             syncRoutine()

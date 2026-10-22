@@ -22,6 +22,7 @@ enum CalendarSync {
         let start: Int?
         let duration: Int
         let project: String?
+        let notes: String
     }
 
     struct CalendarChoice: Identifiable, Hashable {
@@ -85,7 +86,8 @@ enum CalendarSync {
     static func snapshot(_ tasks: [PlannerTask]) -> [Item] {
         tasks.compactMap { task in
             guard let day = task.day, !task.isDone else { return nil }
-            return Item(id: task.id, title: task.title, day: day, start: task.start, duration: task.duration, project: task.project?.name)
+            return Item(id: task.id, title: task.title, day: day, start: task.start, duration: task.duration,
+                        project: task.project?.name, notes: task.notes)
         }
     }
 
@@ -195,7 +197,10 @@ enum CalendarSync {
             startDate = item.day
             endDate = (cal.date(byAdding: .day, value: 1, to: item.day) ?? item.day).addingTimeInterval(-1)
         }
-        let notes = item.project.map { "Проект: \($0)" }
+        // Заметка задачи и проект — в заметке события.
+        let parts = [item.notes.trimmingCharacters(in: .whitespacesAndNewlines), item.project.map { "Проект: \($0)" } ?? ""]
+            .filter { !$0.isEmpty }
+        let notes: String? = parts.isEmpty ? nil : parts.joined(separator: "\n")
         let marker = marker(item.id)
         let unchanged = event.calendar == calendar
             && event.title == item.title

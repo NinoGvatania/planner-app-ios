@@ -48,7 +48,7 @@ enum TaskExtractor {
 
     /// Задача из ответа модели (Claude или Apple): пустая строка и 0 — «не сказано».
     static func draft(title rawTitle: String, day: String, start rawStart: String, durationMinutes: Int,
-                      important: Int, urgent: Int, project rawProject: String) -> DraftTask? {
+                      important: Int, urgent: Int, project rawProject: String, note: String = "") -> DraftTask? {
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard SpeechCleanup.isMeaningful(title) else { return nil }
         var dayOffset: Int?
@@ -84,7 +84,9 @@ enum TaskExtractor {
             quadrant: quadrant,
             project: project.isEmpty ? nil : project
         )
-        return DraftTask(parsed: parsed)
+        var draft = DraftTask(parsed: parsed)
+        draft.notes = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        return draft
     }
 
     /// Одинаковые задачи (то же название, день и время) оставляем по одной.
@@ -165,6 +167,8 @@ enum OnDeviceExtractor {
         var urgent: Int
         @Guide(description: "Название проекта, если сказано «по проекту …» или «#…»; иначе пустая строка")
         var project: String
+        @Guide(description: "Важные подробности задачи: что именно, кому, сколько, список, срок вроде «до обеда»; иначе пустая строка")
+        var note: String
     }
 
     /// Инструкция по-английски (так модель слушается лучше), с требованием работать на любом языке
@@ -198,6 +202,8 @@ enum OnDeviceExtractor {
         - important / urgent: 1 only when the user explicitly says «важно» / «срочно», -1 for «не важно» /
           «не срочно», otherwise 0.
         - project: the name after «по проекту …» or «#…»; otherwise empty.
+        - note: important details in Russian (what exactly, to whom, how many, a list, a deadline such as
+          «до обеда», a vague time such as «утром»); otherwise empty. The title keeps only the essence.
         Answer only with the structured result.
         """
     }
@@ -208,7 +214,7 @@ enum OnDeviceExtractor {
         return response.content.tasks.compactMap { task in
             TaskExtractor.draft(
                 title: task.title, day: task.day, start: task.start, durationMinutes: task.durationMinutes,
-                important: task.important, urgent: task.urgent, project: task.project
+                important: task.important, urgent: task.urgent, project: task.project, note: task.note
             )
         }
     }

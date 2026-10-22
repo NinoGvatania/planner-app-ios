@@ -11,6 +11,8 @@ struct DraftTask: Identifiable, Equatable {
     /// 0 — не разобрано.
     var quadrantRaw: Int
     var project: String
+    /// Подробности задачи (из разбора моделью); пусто — нет.
+    var notes: String = ""
 
     init(parsed: ParsedTask, id: UUID = UUID()) {
         self.id = id

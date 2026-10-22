@@ -7,6 +7,9 @@ import SwiftData
 final class PlannerTask {
     @Attribute(.unique) var id: UUID
     var title: String
+    /// Подробности: что именно, кому, сколько, «до обеда»… Значение по умолчанию нужно для лёгкой
+    /// миграции SwiftData у уже установленных копий.
+    var notes: String = ""
     /// Начало календарного дня; `nil` — задача в бэклоге.
     var day: Date?
     /// Минуты от 0:00; `nil` — «весь день».
@@ -33,10 +36,12 @@ final class PlannerTask {
         isDone: Bool = false,
         isRoutine: Bool = false,
         project: Project? = nil,
-        backlogRank: Int = 0
+        backlogRank: Int = 0,
+        notes: String = ""
     ) {
         self.id = UUID()
         self.title = title
+        self.notes = notes
         self.day = day
         self.start = start
         self.duration = duration

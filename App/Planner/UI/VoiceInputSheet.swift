@@ -329,6 +329,12 @@ struct VoiceInputSheet: View {
                 Text(draft.title)
                     .font(.system(size: 16, weight: .semibold))
                     .lineLimit(3)
+                if !draft.notes.isEmpty {
+                    Text(draft.notes)
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Tokens.text.opacity(0.75))
+                        .lineLimit(4)
+                }
                 HStack(spacing: 6) {
                     Text(draft.whenText)
                     if draft.quadrantRaw != 0, let quadrant = Quadrant(rawValue: draft.quadrantRaw) {

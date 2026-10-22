@@ -38,6 +38,9 @@ struct DraftEditSheet: View {
                 Section {
                     TextField("Название", text: $draft.title)
                         .font(.system(size: 17))
+                    TextField("Заметка", text: $draft.notes, axis: .vertical)
+                        .font(.system(size: 15))
+                        .lineLimit(1...6)
                 }
                 Section("Когда") {
                     Picker("День", selection: dayBinding) {

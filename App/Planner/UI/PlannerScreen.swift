@@ -919,7 +919,8 @@ struct PlannerScreen: View {
                 duration: draft.duration,
                 quadrant: Quadrant(rawValue: draft.quadrantRaw),
                 project: name.isEmpty ? nil : findOrCreateProject(named: name.capitalizedFirst),
-                backlogRank: rank
+                backlogRank: rank,
+                notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             context.insert(task)
             created.append(task)
