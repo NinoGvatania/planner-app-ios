@@ -80,6 +80,13 @@ struct BacklogDrawerView: View {
         min(fullHeight, max(collapsedHeight, restHeight - dragDelta))
     }
 
+    /// Список снова по высоте панели — той же пружиной, что сворачивает панель: если отпустили сразу,
+    /// пока панель ещё едет вниз, строки уходят вместе с ней, а не исчезают рывком.
+    private func releaseList() {
+        guard frozenListHeight != nil else { return }
+        withAnimation(.spring(duration: 0.3)) { frozenListHeight = nil }
+    }
+
     /// Видимая часть списка между заголовком и строкой ввода.
     private var visibleListHeight: CGFloat { max(0, height - Tokens.drawerCollapsed) }
 
@@ -123,7 +130,7 @@ struct BacklogDrawerView: View {
         }
         .onChange(of: drag?.taskID) { _, id in
             // Перенос закончился где угодно (в том числе сбросом экрана) — список снова по высоте панели.
-            if id == nil { frozenListHeight = nil }
+            if id == nil { releaseList() }
         }
     }
 
@@ -287,11 +294,11 @@ struct BacklogDrawerView: View {
                 },
                 onEnded: {
                     onDragEnded()
-                    frozenListHeight = nil
+                    releaseList()
                 },
                 onCancelled: {
                     (onDragCancelled ?? onDragEnded)()
-                    frozenListHeight = nil
+                    releaseList()
                 }
             )
         )
