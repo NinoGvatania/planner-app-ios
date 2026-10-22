@@ -41,32 +41,24 @@ struct MatrixView: View {
         raw == 0 ? unsortedTasks : items(for: Quadrant(rawValue: raw) ?? .other)
     }
 
+    /// Задачи периода из календаря (бэклога здесь нет) — по дате и времени.
     private func items(for quadrant: Quadrant) -> [PlannerTask] {
-        let today = DayMath.today()
-        func rank(_ task: PlannerTask) -> Int {
-            guard let day = task.day else { return 2 }
-            return day < today ? 0 : 1
-        }
-        return tasks
+        tasks
             .filter { !$0.isDone && !$0.isRoutine && $0.quadrantRaw == quadrant.rawValue }
-            .sorted { a, b in
-                let ra = rank(a), rb = rank(b)
-                if ra != rb { return ra < rb }
-                if ra == 2 { return a.backlogRank > b.backlogRank }
-                let da = a.day ?? today, db = b.day ?? today
-                if da != db { return da < db }
-                return (a.start ?? -1) < (b.start ?? -1)
-            }
+            .sorted(by: Self.byDate)
     }
 
     private var unsortedTasks: [PlannerTask] {
         tasks
             .filter { !$0.isDone && !$0.isRoutine && !$0.isSorted }
-            .sorted { a, b in
-                if (a.day == nil) != (b.day == nil) { return a.day != nil }
-                if let da = a.day, let db = b.day, da != db { return da < db }
-                return a.backlogRank > b.backlogRank
-            }
+            .sorted(by: Self.byDate)
+    }
+
+    /// По дню, внутри дня — сначала «весь день», потом по времени начала.
+    private static func byDate(_ a: PlannerTask, _ b: PlannerTask) -> Bool {
+        let da = a.day ?? .distantFuture, db = b.day ?? .distantFuture
+        if da != db { return da < db }
+        return (a.start ?? -1) < (b.start ?? -1)
     }
 
     private func cellStyle(_ raw: Int) -> QuadrantStyle {

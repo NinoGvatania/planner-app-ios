@@ -30,20 +30,13 @@ struct ProjectsView: View {
         projects.map { ProjectSection(name: $0.name, style: $0.style) } + [ProjectSection(name: nil, style: .unsorted)]
     }
 
+    /// Задачи проекта за период из календаря (бэклога здесь нет): открытые выше, дальше по дате и времени.
     private func items(in name: String?) -> [PlannerTask] {
-        let today = DayMath.today()
-        func rank(_ task: PlannerTask) -> Int {
-            guard let day = task.day else { return 2 }
-            return day < today ? 0 : 1
-        }
-        return tasks
+        tasks
             .filter { !$0.isRoutine && $0.project?.name == name }
             .sorted { a, b in
                 if a.isDone != b.isDone { return !a.isDone }
-                let ra = rank(a), rb = rank(b)
-                if ra != rb { return ra < rb }
-                if ra == 2 { return a.backlogRank > b.backlogRank }
-                let da = a.day ?? today, db = b.day ?? today
+                let da = a.day ?? .distantFuture, db = b.day ?? .distantFuture
                 if da != db { return da < db }
                 return (a.start ?? -1) < (b.start ?? -1)
             }

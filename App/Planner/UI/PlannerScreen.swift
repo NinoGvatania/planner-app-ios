@@ -127,9 +127,10 @@ struct PlannerScreen: View {
 
     private var currentRange: (start: Date, end: Date) { pageRange(index: currentPeriodIndex) }
 
-    private func filtered(_ source: [PlannerTask], in range: (start: Date, end: Date), includingBacklog: Bool = false) -> [PlannerTask] {
+    /// Задачи календаря в периоде. Бэклог сюда не входит ни в одном виде: он живёт только в своей панели.
+    private func filtered(_ source: [PlannerTask], in range: (start: Date, end: Date)) -> [PlannerTask] {
         source.filter { task in
-            guard let day = task.day else { return includingBacklog }
+            guard let day = task.day else { return false }
             return day >= range.start && day < range.end
         }
     }
@@ -402,7 +403,7 @@ struct PlannerScreen: View {
             .id(index)
         case .matrix:
             MatrixView(
-                tasks: filtered(tasks, in: range, includingBacklog: true), drag: drag,
+                tasks: filtered(tasks, in: range), drag: drag,
                 onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
                 onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled,
                 live: live, lock: pagingLock
@@ -410,7 +411,7 @@ struct PlannerScreen: View {
             .id(index)
         case .projects:
             ProjectsView(
-                tasks: filtered(visibleTasks, in: range, includingBacklog: true), drag: drag,
+                tasks: filtered(visibleTasks, in: range), drag: drag,
                 onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
                 onEdit: { editingTask = $0 }, onManageProjects: { showProjects = true },
                 onDragCancelled: dragCancelled, live: live
@@ -697,11 +698,14 @@ struct PlannerScreen: View {
         case .quadrant(let raw):
             guard raw != task.quadrantRaw else { return }
             task.quadrantRaw = raw
-            showToast("«\(task.title)» → " + (Quadrant(rawValue: raw)?.name.lowercased() ?? "не разобрано"))
+            // Из бэклога задача в матрицу периода не переезжает — меняется только квадрант.
+            showToast("«\(task.title)» → " + (Quadrant(rawValue: raw)?.name.lowercased() ?? "не разобрано")
+                      + (task.isInBacklog ? " · в бэклоге" : ""))
         case .project(let name):
             guard task.project?.name != name else { return }
             task.project = name.map { findOrCreateProject(named: $0) }
-            showToast("«\(task.title)» → " + (name.map { "проект «\($0)»" } ?? "без проекта"))
+            showToast("«\(task.title)» → " + (name.map { "проект «\($0)»" } ?? "без проекта")
+                      + (task.isInBacklog ? " · в бэклоге" : ""))
         }
         NotificationScheduler.sync(tasks)
     }
