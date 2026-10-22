@@ -207,7 +207,7 @@ struct MatrixView: View {
                     .overlay(Capsule().strokeBorder(style.border, lineWidth: 1.5))
                     .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pageTap)
                 .accessibilityLabel(cellName(raw) + ", \(count)")
             }
         }
@@ -274,7 +274,7 @@ struct MatrixView: View {
                         .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pageTap)
                 .accessibilityLabel("Показать все: " + quadrant.name)
             }
             if list.isEmpty, slots > 0 {
@@ -311,7 +311,7 @@ struct MatrixView: View {
                     .frame(width: Tokens.hitTarget, height: rowHeight)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pageTap)
             .accessibilityLabel("Отметить выполненной: " + task.title)
             VStack(alignment: .leading, spacing: 1) {
                 Text(task.title)
@@ -371,7 +371,7 @@ struct MatrixView: View {
                 .frame(height: Tokens.hitTarget)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pageTap)
             .accessibilityLabel((isCollapsed ? "Развернуть: " : "Свернуть: ") + cellName(raw))
             if !isCollapsed {
                 ForEach(list, id: \.id) { task in
@@ -407,7 +407,7 @@ struct MatrixView: View {
                     .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pageTap)
             .accessibilityLabel("Отметить выполненной: " + task.title)
             VStack(alignment: .leading, spacing: 2) {
                 Text(task.title)
@@ -484,7 +484,7 @@ struct MatrixView: View {
                         .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pageTap)
                 .accessibilityLabel("Ещё \(hidden): показать все неразобранные")
             }
             if list.isEmpty {

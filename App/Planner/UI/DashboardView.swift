@@ -65,7 +65,7 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity, minHeight: Tokens.hitTarget)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pageTap)
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 16)

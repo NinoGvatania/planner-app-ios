@@ -123,7 +123,7 @@ struct PeriodListView: View {
                 .frame(minHeight: Tokens.hitTarget)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pageTap)
             .accessibilityLabel((isCollapsed ? "Развернуть: " : "Свернуть: ") + section.title)
             if !isCollapsed {
                 ForEach(section.items, id: \.id) { task in
@@ -179,7 +179,7 @@ struct PeriodListView: View {
                 .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pageTap)
             .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
             // Название до двух строк; место справа — только если у задачи есть проект.
             Text(task.title)

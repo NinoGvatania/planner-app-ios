@@ -63,7 +63,7 @@ struct ProjectsView: View {
                             .frame(maxWidth: .infinity, minHeight: Tokens.hitTarget)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pageTap)
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 4)
@@ -111,7 +111,7 @@ struct ProjectsView: View {
                 .frame(height: Tokens.hitTarget)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pageTap)
             .accessibilityLabel((isCollapsed ? "Развернуть: " : "Свернуть: ") + (name ?? "Без проекта"))
             if !isCollapsed {
                 ForEach(list, id: \.id) { task in
@@ -154,7 +154,7 @@ struct ProjectsView: View {
                 .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pageTap)
             .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
             VStack(alignment: .leading, spacing: 2) {
                 Text(task.title)

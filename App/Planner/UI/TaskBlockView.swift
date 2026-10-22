@@ -72,7 +72,7 @@ struct TaskBlockView: View {
                     .padding(.top, tall ? 1 : 0)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pageTap)
                 .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
 
                 if tall {

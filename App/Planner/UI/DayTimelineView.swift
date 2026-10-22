@@ -404,7 +404,7 @@ struct DayTimelineView: View {
                 .padding(.trailing, 7)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pageTap)
         .disabled(hidden == 0)
         .accessibilityLabel(expanded ? "Свернуть задачи без времени" : "Ещё \(hidden): показать все задачи без времени")
     }
@@ -424,7 +424,7 @@ struct DayTimelineView: View {
                         .frame(width: 30, height: hitHeight)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pageTap)
                 .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
             }
             Text(task.title)
