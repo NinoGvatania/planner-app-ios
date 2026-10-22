@@ -61,12 +61,12 @@ struct PlannerScreen: View {
         tasks.filter { $0.isOverdue(today: today) || recentlyDoneOverdue.contains($0.id) }
             .sorted { ($0.day ?? today, $0.start ?? 0) < ($1.day ?? today, $1.start ?? 0) }
     }
-    /// Слова пользователя для разбора диктовки: проекты и названия последних задач (до 150), без повторов.
-    private var voiceVocabulary: [String] {
+    /// Справочник для разбора диктовки: все проекты и названия 60 последних задач без повторов.
+    private var voiceVocabulary: DictationVocabulary {
+        let projects = ((try? context.fetch(FetchDescriptor<Project>())) ?? []).map(\.name)
         var seen = Set<String>()
-        let projectNames = ((try? context.fetch(FetchDescriptor<Project>())) ?? []).map(\.name)
-        let titles = tasks.reversed().map(\.title)
-        return (projectNames + titles).filter { seen.insert($0.lowercased()).inserted }.prefix(150).map { $0 }
+        let titles = tasks.reversed().map(\.title).filter { seen.insert($0.lowercased()).inserted }
+        return DictationVocabulary(projects: projects, recentTitles: Array(titles.prefix(60)))
     }
     private var backlogTasks: [PlannerTask] {
         tasks.filter { $0.isInBacklog && (!$0.isDone || showDone) }
@@ -983,7 +983,7 @@ struct PlannerScreen: View {
 
     private func findOrCreateProject(named name: String) -> Project {
         let all = (try? context.fetch(FetchDescriptor<Project>())) ?? []
-        if let existing = all.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+        if let existing = all.first(where: { $0.matches(name) }) {
             return existing
         }
         let project = Project(name: name.capitalizedFirst, colorIndex: all.count % ProjectPalette.colors.count)

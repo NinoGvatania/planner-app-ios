@@ -19,8 +19,8 @@ enum TaskExtractor {
     }
 
     /// Разобрать текст. Возвращает задачи и чем разбирали.
-    /// `vocabulary` — проекты и прежние задачи пользователя: по ним модель правит искажённые названия.
-    static func extract(_ transcript: String, vocabulary: [String] = []) async -> (drafts: [DraftTask], source: Source) {
+    /// `vocabulary` — проекты и недавние задачи пользователя: по ним модель правит искажённые названия.
+    static func extract(_ transcript: String, vocabulary: DictationVocabulary = DictationVocabulary()) async -> (drafts: [DraftTask], source: Source) {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return ([], .rules(reason: nil)) }
         var reasons: [String] = []

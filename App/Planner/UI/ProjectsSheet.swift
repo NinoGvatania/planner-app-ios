@@ -25,7 +25,7 @@ struct ProjectsSheet: View {
                 Section(projects.isEmpty ? "Проектов пока нет" : "Проекты") {
                     ForEach(projects) { project in
                         ProjectRow(project: project, isNameTaken: { name in
-                            projects.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame && $0 !== project }
+                            projects.contains { $0.matches(name) && $0 !== project }
                         })
                     }
                     .onDelete { offsets in
@@ -54,7 +54,7 @@ struct ProjectsSheet: View {
 
     private func add() {
         let name = trimmed.capitalizedFirst
-        guard !name.isEmpty, !projects.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { return }
+        guard !name.isEmpty, !projects.contains(where: { $0.matches(name) }) else { return }
         context.insert(Project(name: name, colorIndex: projects.count % ProjectPalette.colors.count))
         newName = ""
         newNameFocused = true

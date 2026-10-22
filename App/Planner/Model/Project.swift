@@ -15,4 +15,13 @@ final class Project {
         self.colorIndex = colorIndex
         self.tasks = []
     }
+
+    /// Тот же проект: регистр и «ё/е» не различаются («учеба» = «Учёба»).
+    func matches(_ other: String) -> Bool {
+        Self.key(name) == Self.key(other)
+    }
+
+    private static func key(_ text: String) -> String {
+        text.lowercased().replacingOccurrences(of: "ё", with: "е")
+    }
 }

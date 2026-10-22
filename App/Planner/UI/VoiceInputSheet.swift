@@ -6,8 +6,8 @@ import SwiftUI
 /// поправить и сохранить.
 struct VoiceInputSheet: View {
     let onDone: ([DraftTask]) -> Void
-    /// Проекты и прежние задачи пользователя — подсказка для разбора искажённых названий.
-    var vocabulary: [String] = []
+    /// Проекты и недавние задачи пользователя — подсказка для разбора искажённых названий.
+    var vocabulary = DictationVocabulary()
     @Environment(\.dismiss) private var dismiss
     @State private var recorder = SpeechRecorder()
 

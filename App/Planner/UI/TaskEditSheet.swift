@@ -321,7 +321,7 @@ struct TaskEditSheet: View {
         let name = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
         if name.isEmpty {
             task.project = nil
-        } else if let existing = projects.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+        } else if let existing = projects.first(where: { $0.matches(name) }) {
             task.project = existing
         } else {
             let project = Project(name: name.capitalizedFirst, colorIndex: projects.count % ProjectPalette.colors.count)
