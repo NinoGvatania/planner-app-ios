@@ -14,6 +14,10 @@ struct PagerView<Content: View>: View {
     /// влево целиком — с прокруткой и свёрнутыми секциями, а не пересоздаётся на лету. Сетке дня и недели
     /// нужно обратное (средняя позиция живёт, пока задачу переносят через «пружину» вкладки) — для неё `false`.
     var keyed = false
+    /// Ниже этой высоты страница не показывается вовсе (бэклог на весь экран, клавиатура): лучше пустой
+    /// фон, чем срез заголовков и строк. Своя для каждого вида: неделе нужны заголовки дней и строка
+    /// «весь день», месяцу — шесть строк с числами, матрице — переключатель и строка капсул.
+    var minVisibleHeight: CGFloat = 60
     @ViewBuilder let content: (_ index: Int, _ live: Bool, _ syncTick: Int) -> Content
 
     @Environment(\.scenePhase) private var scenePhase
@@ -53,8 +57,7 @@ struct PagerView<Content: View>: View {
             // Пока страница едет вбок, вертикальная прокрутка стоит: соседние страницы остаются на той же
             // высоте, что и средняя, и после подмены ничего не прыгает по вертикали.
             .scrollDisabled(axis == .horizontal)
-            // Бэклог на весь экран оставляет полосу в пару десятков точек: в ней не показывать срез страницы.
-            .opacity(size.height >= 60 ? 1 : 0)
+            .opacity(size.height >= minVisibleHeight ? 1 : 0)
             .onChange(of: size.width, initial: true) { _, value in width = value }
         }
         .clipped()

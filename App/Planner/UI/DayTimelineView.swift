@@ -76,6 +76,7 @@ struct DayTimelineView: View {
     @State private var autoScrollDirection = 0
     @State private var resizeTracker = ResizeTracker()
     @State private var createTracker = CreateTracker()
+    @State private var allDayScroll = ScrollPosition(edge: .top)
 
     private let topInset: CGFloat = 10
     private let bottomInset: CGFloat = 26
@@ -316,32 +317,36 @@ struct DayTimelineView: View {
 
     /// Строка без времени: слева одна кнопка-счётчик («+7» / число), справа колонки. Свёрнутая — 44 pt,
     /// фишка по центру; развёрнутая — отдельная панель с прокруткой, не выше пяти строк, с отступом от сетки.
+    /// Устройство строки в обоих состояниях одно и то же (меняются только размеры и фон): фишка, которую
+    /// тянут, не пересоздаётся, когда панель раскрывается или сворачивается посреди переноса.
     private var allDayRow: some View {
-        HStack(alignment: .top, spacing: 0) {
+        let shown = allDayPanelShown
+        return HStack(alignment: .top, spacing: 0) {
             allDayBadge
-            if allDayPanelShown {
-                ScrollView(.vertical, showsIndicators: false) {
-                    allDayColumns
-                }
-                .frame(height: allDayExpandedHeight)
-                .overlay {
-                    // Зоны сброса развёрнутой панели — по её видимой рамке, а не по содержимому прокрутки:
-                    // не вылезают на сетку и не оставляют мёртвых мест под короткими колонками.
-                    HStack(spacing: 0) {
-                        ForEach(days, id: \.self) { day in
-                            Color.clear.reportZone("allday-\(day)", enabled: live)
-                        }
-                    }
-                    .allowsHitTesting(false)
-                }
-                .background(Tokens.panel.opacity(0.75), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
-                .padding(.trailing, 8)
-                .padding(.bottom, 6)
-            } else {
+            ScrollView(.vertical, showsIndicators: false) {
                 allDayColumns
-                    .padding(.trailing, 8)
             }
+            .scrollPosition($allDayScroll)
+            .scrollDisabled(!shown)
+            .frame(height: shown ? allDayExpandedHeight : Tokens.hitTarget)
+            .overlay {
+                // Зоны сброса развёрнутой панели — по её видимой рамке, а не по содержимому прокрутки:
+                // не вылезают на сетку и не оставляют мёртвых мест под короткими колонками.
+                HStack(spacing: 0) {
+                    ForEach(days, id: \.self) { day in
+                        Color.clear.reportZone("allday-\(day)", enabled: live && shown)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            .background(shown ? Tokens.panel.opacity(0.75) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(shown ? 0.07 : 0), lineWidth: 1))
+            .padding(.trailing, 8)
+            .padding(.bottom, shown ? 6 : 0)
+        }
+        .onChange(of: shown) { _, value in
+            // Свернули — содержимое снова с первой строки.
+            if !value { allDayScroll.scrollTo(edge: .top) }
         }
     }
 
@@ -624,8 +629,7 @@ struct DayTimelineView: View {
     }
 
     /// Ручка растягивания: нижняя двигает конец, верхняя — начало (конец на месте). Шаг 15 минут.
-    /// Зона нажатия 44 pt: до 24 pt внутри блока и остальное снаружи, но не на соседний блок (между блоками
-    /// встык всего 2 pt — тогда зона добирает внутрь), правее кружка-галочки и не шире своей колонки.
+    /// Зона нажатия — см. `handleZone`; по ширине правее кружка-галочки и не шире своей колонки.
     /// Тап без движения внутри блока открывает редактор, снаружи — снимает выделение.
     private func resizeHandle(_ task: PlannerTask, edge: HandleEdge, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
         let laneWidth = columnWidth / CGFloat(placement.laneCount)
@@ -637,14 +641,9 @@ struct DayTimelineView: View {
         let checkbox: CGFloat = laneWidth < 76 ? 0 : (laneWidth < 160 ? 26 : 34)
         let zoneWidth = min(88, max(min(24, laneWidth), width - checkbox))
         let zoneCenterX = left + checkbox + (width - checkbox) / 2
-        // Сначала до 24 pt внутри блока, остальное до 44 — снаружи, если там свободно; упёрлись в соседний
-        // блок — добираем внутрь (не больше половины блока: вторая половина — у другой ручки).
-        let free = freeSpace(around: task, top: top, bottom: top + height)
-        let gap = (edge == .top ? free.above : free.below) - 1
-        let insideBase = min(height / 2, 24)
-        let outside = max(0, min(Tokens.hitTarget - insideBase, gap))
-        let inside = min(height / 2, max(insideBase, Tokens.hitTarget - outside))
-        let zoneHeight = outside + inside
+        let zone = handleZone(task, edge: edge, top: top, height: height)
+        let outside = zone.outside
+        let zoneHeight = zone.outside + zone.inside
         let edgeY = edge == .top ? top : top + height
         let zoneCenterY = edge == .top ? top - outside + zoneHeight / 2 : top + height + outside - zoneHeight / 2
         let originalStart = task.start ?? 0
@@ -697,6 +696,42 @@ struct DayTimelineView: View {
                     }
             )
             .accessibilityHidden(true)
+    }
+
+    /// Высота зоны ручки снаружи и внутри блока. Цель — 44 pt на каждую ручку:
+    /// - у самой кромки внутри блока всегда есть своя часть (до 12 pt), чтобы схватить кромку;
+    /// - остальное берётся снаружи, сколько свободно до соседнего блока;
+    /// - не хватило — добирается внутрь, но середина блока (24 pt у блоков от 72 pt) остаётся для удержания
+    ///   и переноса самого блока; две ручки делят внутренность по нужде, а не поровну;
+    /// - если блок зажат соседями с обеих сторон и зона всё равно меньше 24 pt — заходит на соседа до 10 pt.
+    private func handleZone(_ task: PlannerTask, edge: HandleEdge, top: CGFloat, height: CGFloat) -> (outside: CGFloat, inside: CGFloat) {
+        let free = freeSpace(around: task, top: top, bottom: top + height)
+        let gapTop = max(0, free.above - 1)
+        let gapBottom = max(0, free.below - 1)
+        let minIn = min(12, height / 4)
+        let band: CGFloat = height >= 72 ? 24 : max(0, height - 48)
+        let budget = max(2 * minIn, height - band)
+        let outTop = min(Tokens.hitTarget - minIn, gapTop)
+        let outBottom = min(Tokens.hitTarget - minIn, gapBottom)
+        let needTop = max(minIn, Tokens.hitTarget - outTop)
+        let needBottom = max(minIn, Tokens.hitTarget - outBottom)
+        var inTop = needTop
+        var inBottom = needBottom
+        if inTop + inBottom > budget {
+            let half = budget / 2
+            if needTop <= half {
+                inBottom = budget - needTop
+            } else if needBottom <= half {
+                inTop = budget - needBottom
+            } else {
+                inTop = half
+                inBottom = half
+            }
+        }
+        var outside = edge == .top ? outTop : outBottom
+        let inside = edge == .top ? inTop : inBottom
+        if outside + inside < 24 { outside += min(10, 24 - outside - inside) }
+        return (outside, inside)
     }
 
     /// Сколько свободного места (pt) над блоком и под ним до ближайших блоков этого же дня, которые целиком

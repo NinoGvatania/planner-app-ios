@@ -149,7 +149,10 @@ struct MatrixView: View {
         let cellHeight = showTray ? withTray : (height - axisHeight - cellSpacing * 2) / 2
         // Повёрнутая подпись «НЕ ВАЖНО» длиной около 64 pt: в более низкой клетке подписи налезли бы друг на друга.
         let rowLabelsShown = cellHeight >= 70
-        if cellHeight < cellHeaderHeight {
+        if height < Tokens.hitTarget {
+            // Даже строка капсул не влезает (пейджер такую страницу и так прячет) — ничего не резать.
+            Color.clear
+        } else if cellHeight < cellHeaderHeight {
             compactStrip
         } else {
             VStack(spacing: cellSpacing) {

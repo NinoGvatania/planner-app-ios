@@ -131,7 +131,9 @@ struct VoiceInputSheet: View {
     private var transcriptArea: some View {
         Group {
             let paused = recorder.status == .paused
-            if paused && (editingTranscript || editedTranscript.isEmpty) {
+            // Фокус в редакторе — тоже правка: иначе после первой буквы в пустом поле редактор
+            // сменился бы текстом и клавиатура закрылась.
+            if paused && (editingTranscript || transcriptFocused || editedTranscript.isEmpty) {
                 // Редактор с теми же кеглем, интерлиньяжем и полями, что у текста при записи:
                 // 15 + 5 (поле строки UITextView) = 20 по горизонтали, 8 + 8 (отступ контейнера) = 16 сверху.
                 TextEditor(text: $editedTranscript, selection: $transcriptSelection)
@@ -142,6 +144,9 @@ struct VoiceInputSheet: View {
                     .padding(.horizontal, 15)
                     .padding(.top, 8)
                     .task { transcriptFocused = editingTranscript }
+                    .onChange(of: transcriptFocused) { _, focused in
+                        if focused { editingTranscript = true }
+                    }
             } else if shownTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 emptyHint
             } else {

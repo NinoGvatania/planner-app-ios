@@ -2,6 +2,7 @@ import Foundation
 import PlannerCore
 import SwiftData
 import SwiftUI
+import UIKit
 
 /// Единственный экран приложения: шапка, рабочая поверхность, панель бэклога.
 struct PlannerScreen: View {
@@ -241,7 +242,8 @@ struct PlannerScreen: View {
                 blocked: { drag != nil || gridScroll.interacting || pagingLock.locked },
                 cancelWhen: drag != nil,
                 hintKey: display == .calendar && period == .month ? "month" : nil,
-                keyed: !(display == .calendar && (period == .day || period == .week))
+                keyed: !(display == .calendar && (period == .day || period == .week)),
+                minVisibleHeight: pageMinHeight
             ) { index, live, tick in
                 page(index: index, live: live, tick: tick)
             }
@@ -492,7 +494,37 @@ struct PlannerScreen: View {
     private var toastAboveDrawer: Bool {
         let drawerTop = zones["drawer"]?.minY ?? (rootSize.height - Tokens.drawerCollapsed)
         let chrome: CGFloat = 62 + (isDayGrid ? 64 : 0)
-        return drawerTop - chrome >= 48 + 12 + 8
+        let pill = toast.map(toastHeight) ?? 48
+        return drawerTop - chrome >= pill + 12 + 8
+    }
+
+    /// Высота плашки тоста заранее, до показа: текст 14 pt до трёх строк, поля 10 (с кнопкой — строка 44).
+    private func toastHeight(_ toast: ToastMessage) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: 14)
+        let action = toast.actionTitle.map {
+            ($0 as NSString).size(withAttributes: [.font: UIFont.boldSystemFont(ofSize: 14)]).width + 12
+        } ?? 0
+        let width = max(60, rootSize.width - 32 - 28 - action)
+        let text = (toast.message as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        ).height
+        let lines = min(3, max(1, (text / font.lineHeight).rounded()))
+        let textHeight = lines * font.lineHeight
+        return toast.actionTitle == nil ? textHeight + 20 : max(Tokens.hitTarget, textHeight) + 4
+    }
+
+    /// Минимальная высота страницы пейджера, при которой она видна целиком по смыслу (см. `PagerView`).
+    private var pageMinHeight: CGFloat {
+        switch (display, period) {
+        case (.calendar, .week): return 48 + Tokens.hitTarget + 1
+        case (.calendar, .month): return 22 + 1 + 6 * 27
+        // Переключатель «Матрица / Список» с отступом (до 48), строка капсул 44 и поле снизу 10.
+        case (.matrix, _): return 48 + Tokens.hitTarget + 10
+        default: return 60
+        }
     }
 
     /// Тост висит на панели бэклога и едет вместе с ней: в 12 pt над её верхом, а если выше места нет
