@@ -297,7 +297,7 @@ struct PlannerScreen: View {
             OverdueSheet(
                 tasks: overdueSheetTasks,
                 onToggle: toggleDone,
-                onFitToday: { fitOverdue(dayOffset: 0) },
+                onFitToday: overdueToToday,
                 onFitTomorrow: { fitOverdue(dayOffset: 1) },
                 onToBacklog: overdueToBacklog,
                 onDelete: deleteTask,
@@ -815,6 +815,7 @@ struct PlannerScreen: View {
         NotificationScheduler.sync(tasks)
     }
 
+    /// «На завтра»: просроченные — в свободные окна дня `target` с 9:00 (сегодня — `overdueToToday`).
     private func fitOverdue(dayOffset target: Int) {
         let overdue = overdueTasks
         guard !overdue.isEmpty else { showOverdue = false; return }
@@ -856,6 +857,29 @@ struct PlannerScreen: View {
         NotificationScheduler.sync(tasks)
     }
 
+    /// «На сегодня»: все просроченные — на сегодня на весь день, без времени; время расставляешь сам.
+    private func overdueToToday() {
+        let overdue = overdueTasks
+        guard !overdue.isEmpty else {
+            showOverdue = false
+            showToast("Просроченных задач нет")
+            return
+        }
+        let today = DayMath.day(offset: 0)
+        for task in overdue {
+            task.day = today
+            task.start = nil
+        }
+        showOverdue = false
+        period = .day
+        display = .calendar
+        dayOffset = 0
+        selectedID = nil
+        let n = overdue.count
+        showToast("На сегодня, на весь день: \(n) " + DayMath.plural(n, "задача", "задачи", "задач"))
+        NotificationScheduler.sync(tasks)
+    }
+
     private func overdueToBacklog() {
         let overdue = overdueTasks
         var rank = tasks.map { $0.backlogRank }.max() ?? 0
@@ -892,7 +916,7 @@ struct PlannerScreen: View {
                 : items.map { ($0.start.map { ClockGrid.format(minutes: $0) + " " } ?? "") + $0.title }.joined(separator: "; ")
             showToast(DayMath.label(offset: offset).capitalizedFirst + ": " + summary)
         case .fitOverdue(let offset):
-            fitOverdue(dayOffset: offset)
+            if offset == 0 { overdueToToday() } else { fitOverdue(dayOffset: offset) }
         }
     }
 

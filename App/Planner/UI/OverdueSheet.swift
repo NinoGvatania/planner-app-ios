@@ -1,7 +1,7 @@
 import PlannerCore
 import SwiftUI
 
-/// Лист «Просрочено»: список с галочками и «Перенести» — на сегодня в свободные окна, на завтра, в бэклог.
+/// Лист «Просрочено»: список с галочками и «Перенести» — на сегодня на весь день, на завтра, в бэклог.
 struct OverdueSheet: View {
     let tasks: [PlannerTask]
     let onToggle: (PlannerTask) -> Void
@@ -13,11 +13,6 @@ struct OverdueSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var moveOpen = false
     @State private var editing: PlannerTask?
-
-    private var fromLabel: String {
-        let next = Int((Double(DayMath.nowMinutes()) / 15).rounded(.up)) * 15
-        return "с " + ClockGrid.format(minutes: min(next, ClockGrid.dayEnd)) + ", важные — первыми"
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,9 +56,9 @@ struct OverdueSheet: View {
                     VStack(spacing: 8) {
                         Button(action: onFitToday) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("На сегодня — в свободные окна")
+                                Text("На сегодня — на весь день")
                                     .font(.system(size: 15, weight: .bold))
-                                Text(fromLabel)
+                                Text("без времени — расставишь сам")
                                     .font(.system(size: 12))
                                     .opacity(0.8)
                             }
