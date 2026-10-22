@@ -151,7 +151,8 @@ struct MonthView: View {
                 .contentShape(Rectangle())
                 .gesture(createHold(offset))
         }
-        .padding(.top, 3)
+        // В низкой клетке (открыт бэклог) верхний отступ уступает место кружку с числом.
+        .padding(.top, min(3, max(0, height - 24)))
         .padding(.horizontal, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // Ничего из клетки не вылезает в соседнюю неделю, даже пока высота анимируется.

@@ -22,6 +22,9 @@ struct PlannerScreen: View {
     @State private var toast: ToastMessage?
     @State private var toastTask: Task<Void, Never>?
     @State private var toastAction: (() -> Void)?
+    /// Высота плашки текущего тоста. Остаётся прежней и после того, как тост убран: пока он гаснет,
+    /// место (над панелью или внутри неё) не меняется.
+    @State private var toastPillHeight: CGFloat = 48
     @State private var selectedID: UUID?
     @State private var drag: DragState?
     @State private var zones: [String: CGRect] = [:]
@@ -494,8 +497,7 @@ struct PlannerScreen: View {
     private var toastAboveDrawer: Bool {
         let drawerTop = zones["drawer"]?.minY ?? (rootSize.height - Tokens.drawerCollapsed)
         let chrome: CGFloat = 62 + (isDayGrid ? 64 : 0)
-        let pill = toast.map(toastHeight) ?? 48
-        return drawerTop - chrome >= pill + 12 + 8
+        return drawerTop - chrome >= toastPillHeight + 12 + 8
     }
 
     /// Высота плашки тоста заранее, до показа: текст 14 pt до трёх строк, поля 10 (с кнопкой — строка 44).
@@ -520,7 +522,8 @@ struct PlannerScreen: View {
     private var pageMinHeight: CGFloat {
         switch (display, period) {
         case (.calendar, .week): return 48 + Tokens.hitTarget + 1
-        case (.calendar, .month): return 22 + 1 + 6 * 27
+        // Месяц: заголовок дней 22 + линия + шесть строк по 24 (кружок числа; верхний отступ клетка отдаёт сама).
+        case (.calendar, .month): return 22 + 1 + 6 * 24
         // Переключатель «Матрица / Список» с отступом (до 48), строка капсул 44 и поле снизу 10.
         case (.matrix, _): return 48 + Tokens.hitTarget + 10
         default: return 60
@@ -946,7 +949,9 @@ struct PlannerScreen: View {
 
     private func showToast(_ message: String, actionTitle: String? = nil, duration: Double = 2.8, action: (() -> Void)? = nil) {
         toastTask?.cancel()
-        toast = ToastMessage(message: message, actionTitle: actionTitle)
+        let next = ToastMessage(message: message, actionTitle: actionTitle)
+        toastPillHeight = toastHeight(next)
+        toast = next
         toastAction = action
         toastTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(duration))
