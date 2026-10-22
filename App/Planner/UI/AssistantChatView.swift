@@ -101,9 +101,12 @@ struct AssistantChatView: View {
             ))
         }
         .confirmationDialog("Задачи ещё не добавлены", isPresented: $confirmClose, titleVisibility: .visible) {
-            Button("Добавить и закрыть") {
-                if let index = activeIndex { add(at: index) }
-                close()
+            // Пока ассистент отвечает, список может смениться — добавлять его сейчас нельзя.
+            if !busy {
+                Button("Добавить и закрыть") {
+                    if let index = activeIndex { add(at: index) }
+                    close()
+                }
             }
             Button("Закрыть без добавления", role: .destructive) { close() }
             Button("Остаться", role: .cancel) {}
@@ -216,9 +219,12 @@ struct AssistantChatView: View {
                         .foregroundStyle(Tokens.onAccent)
                         .frame(maxWidth: .infinity)
                         .frame(height: 46)
-                        .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
+                        .background(Tokens.accent.opacity(busy ? 0.4 : 1), in: RoundedRectangle(cornerRadius: 14))
                         .contentShape(Rectangle())
                 }
+                // Пока ассистент отвечает, список заморожен: иначе ответ вернул бы уже добавленные задачи
+                // новым предложением (дубли), а правки пропали бы вместе с заменённым списком.
+                .disabled(busy)
                 .accessibilityLabel("Добавить задачи в календарь")
             case .added:
                 Label("Добавлено", systemImage: "checkmark.circle.fill")
@@ -269,7 +275,7 @@ struct AssistantChatView: View {
                 .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if active {
+            if active && !busy {
                 Button {
                     guard let m = messages.firstIndex(where: { $0.id == messageID }) else { return }
                     withAnimation(.easeOut(duration: 0.2)) { messages[m].drafts.removeAll { $0.id == draft.id } }
@@ -290,7 +296,7 @@ struct AssistantChatView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
         .contentShape(RoundedRectangle(cornerRadius: 14))
         .onTapGesture {
-            guard active else { return }
+            guard active, !busy else { return }
             editing = EditTarget(messageID: messageID, draftID: draft.id)
         }
     }
@@ -375,8 +381,11 @@ struct AssistantChatView: View {
 
     private func toggleListening() {
         if recorder.isListening {
-            // Последний заход распознаватель допишет в поле сам (onSegmentFinished).
-            recorder.pause()
+            // Недоговорённое — сразу в поле, без ожидания распознавателя: иначе последние слова на миг
+            // пропадали бы, а напечатанное в этот миг встало бы перед ними.
+            let live = recorder.liveText.trimmingCharacters(in: .whitespacesAndNewlines)
+            recorder.shutdown()
+            if !live.isEmpty { composer = composer.isEmpty ? live : composer + " " + live }
         } else {
             composerFocused = false
             Task { await recorder.start() }
@@ -392,6 +401,8 @@ struct AssistantChatView: View {
         recorder.shutdown()
         composer = ""
         composerFocused = false
+        // Старые ошибки больше не нужны: их «Повторить» отправил бы историю, которая кончается ответом ассистента.
+        messages.removeAll { $0.role == .error }
         messages.append(Message(role: .user, text: text))
         requestReply()
     }
@@ -403,6 +414,8 @@ struct AssistantChatView: View {
     }
 
     private func requestReply() {
+        // Отвечать есть на что, только если последнее слово за пользователем.
+        guard !busy, messages.last(where: { $0.role != .error })?.role == .user else { return }
         let turns: [ClaudeAssistant.Turn] = messages.compactMap { message in
             switch message.role {
             case .user: return ClaudeAssistant.Turn(role: .user, text: message.text)
@@ -433,7 +446,8 @@ struct AssistantChatView: View {
     }
 
     private func add(at index: Int) {
-        guard messages.indices.contains(index), messages[index].proposal == .active, !messages[index].drafts.isEmpty else { return }
+        guard !busy, messages.indices.contains(index), messages[index].proposal == .active,
+              !messages[index].drafts.isEmpty else { return }
         onAdd(messages[index].drafts)
         messages[index].proposal = .added
     }
