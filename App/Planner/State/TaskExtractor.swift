@@ -89,13 +89,24 @@ enum TaskExtractor {
         return draft
     }
 
-    /// Одинаковые задачи (то же название, день и время) оставляем по одной.
+    /// Одинаковые задачи (то же название, день и время) оставляем по одной; разные заметки повторов
+    /// не теряются — дописываются к оставленной.
     static func dedupe(_ drafts: [DraftTask]) -> [DraftTask] {
-        var seen = Set<String>()
-        return drafts.filter { draft in
+        var result: [DraftTask] = []
+        var index: [String: Int] = [:]
+        for draft in drafts {
             let key = draft.title.lowercased() + "|\(draft.dayOffset ?? -999)|\(draft.start ?? -1)"
-            return seen.insert(key).inserted
+            guard let kept = index[key] else {
+                index[key] = result.count
+                result.append(draft)
+                continue
+            }
+            let note = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !note.isEmpty, !result[kept].notes.contains(note) {
+                result[kept].notes = result[kept].notes.isEmpty ? note : result[kept].notes + "\n" + note
+            }
         }
+        return result
     }
 
     /// Правила: деление на куски, чистка мусора, парсер быстрого ввода для дня, времени и квадранта.
