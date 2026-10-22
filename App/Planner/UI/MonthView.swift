@@ -96,53 +96,66 @@ struct MonthView: View {
         .accessibilityHint("Свайп влево или вправо листает месяцы")
     }
 
+    /// Сколько фишек влезает в клетку: под числом (3 + 24 pt) по 21 pt на фишку, 4 pt запаса снизу.
+    /// При открытом бэклоге клетки низкие — тогда фишек нет, а число задач стоит рядом с числом дня.
+    private func chipSlots(height: CGFloat) -> Int {
+        max(0, Int((height - 3 - 24 - 4) / 21))
+    }
+
     private func cell(offset: Int, height: CGFloat, tasks: [PlannerTask]) -> some View {
         let date = DayMath.day(offset: offset)
         let inMonth = DayMath.monthIndex(date) == monthIndex
         let today = offset == 0
         let weekend = DayMath.weekdayIndex(date) == 0 || DayMath.weekdayIndex(date) == 6
         let hovered = live && drag?.target == .dayTab(offset: offset)
-        let maxChips = max(1, Int((height - 30) / 21))
-        let shown = Array(tasks.prefix(tasks.count > maxChips ? maxChips - 1 : maxChips))
+        let slots = chipSlots(height: height)
+        // Не влезают все — последняя строка отдаётся под «+N» (14 pt вместо 21).
+        let shown = Array(tasks.prefix(tasks.count > slots ? max(0, slots - 1) : slots))
         let hidden = tasks.count - shown.count
         return VStack(alignment: .leading, spacing: 0) {
-            Text("\(DayMath.dayOfMonth(date))")
-                .font(.system(size: 13, weight: today ? .bold : .semibold))
-                .monospacedDigit()
-                .foregroundStyle(today ? Tokens.onAccent : (inMonth ? (weekend ? Tokens.caption : Tokens.text) : Tokens.muted.opacity(0.6)))
-                .frame(width: 24, height: 24)
-                .background(today ? Tokens.accent : Color.clear, in: Circle())
-                .padding(.leading, 2)
+            HStack(spacing: 0) {
+                Text("\(DayMath.dayOfMonth(date))")
+                    .font(.system(size: 13, weight: today ? .bold : .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(today ? Tokens.onAccent : (inMonth ? (weekend ? Tokens.caption : Tokens.text) : Tokens.muted.opacity(0.6)))
+                    .frame(width: 24, height: 24)
+                    .background(today ? Tokens.accent : Color.clear, in: Circle())
+                    .padding(.leading, 2)
+                Spacer(minLength: 0)
+                if slots == 0, !tasks.isEmpty {
+                    Text("\(tasks.count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(Tokens.caption)
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 18, minHeight: 16)
+                        .background(Tokens.badge, in: Capsule())
+                        .padding(.trailing, 2)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(createHold(offset))
             ForEach(shown, id: \.id) { task in
                 chip(task)
             }
-            if hidden > 0 {
+            if hidden > 0, slots > 0 {
                 Text("+\(hidden)")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Tokens.muted)
+                    .frame(height: 14)
                     .padding(.leading, 4)
             }
-            // Пустой остаток клетки: удержание здесь создаёт задачу, по фишкам — тянет их.
+            // Пустой остаток клетки (и строка с числом): удержание здесь создаёт задачу, по фишкам — тянет их.
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .frame(minHeight: 8)
                 .contentShape(Rectangle())
-                .gesture(
-                    HoldDragGesture(onChanged: { _, _ in
-                        // Одна задача «на весь день» за одно удержание, название спросит экран.
-                        guard creatingDay != offset else { return }
-                        creatingDay = offset
-                        onCreate(offset)
-                    }, onEnded: {
-                        creatingDay = nil
-                    }, onCancelled: {
-                        creatingDay = nil
-                    })
-                )
+                .gesture(createHold(offset))
         }
         .padding(.top, 3)
         .padding(.horizontal, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Ничего из клетки не вылезает в соседнюю неделю, даже пока высота анимируется.
+        .clipped()
         .background(hovered ? Tokens.accent.opacity(0.16) : (inMonth ? Color.clear : Color.white.opacity(0.015)))
         .overlay(alignment: .trailing) { Rectangle().fill(Tokens.line.opacity(0.6)).frame(width: 1) }
         .contentShape(Rectangle())
@@ -151,6 +164,19 @@ struct MonthView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(DayMath.accessibilityLabel(offset: offset) + ", задач: \(tasks.count)")
         .accessibilityHint("Удержание создаёт задачу")
+    }
+
+    /// Удержание на пустом месте клетки: одна задача «на весь день» за одно удержание, название спросит экран.
+    private func createHold(_ offset: Int) -> some UIGestureRecognizerRepresentable {
+        HoldDragGesture(onChanged: { _, _ in
+            guard creatingDay != offset else { return }
+            creatingDay = offset
+            onCreate(offset)
+        }, onEnded: {
+            creatingDay = nil
+        }, onCancelled: {
+            creatingDay = nil
+        })
     }
 
     private func chip(_ task: PlannerTask) -> some View {

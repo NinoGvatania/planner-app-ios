@@ -110,11 +110,12 @@ struct TaskBlockView: View {
         .padding(.vertical, tall ? (compact ? 3 : 5) : 0)
         .padding(.trailing, compact ? 4 : 8)
         .frame(height: height)
+        // Обрезается только текст: тень выделенного блока рисуется снаружи и не срезается.
+        .clipShape(RoundedRectangle(cornerRadius: 9))
         .foregroundStyle(style.text)
         .background(style.background, in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Color.white : style.border, lineWidth: 1.5))
         .shadow(color: Color.black.opacity(selected ? 0.5 : 0), radius: 11, y: 8)
         .opacity(dimmed ? 0.35 : (task.isDone ? 0.55 : 1))
-        .clipped()
     }
 }

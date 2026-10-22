@@ -50,6 +50,8 @@ struct TaskRowView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(metaColor)
                     .lineLimit(1)
+                    // «Когда / сколько» важнее проекта: при нехватке места сокращается название проекта.
+                    .layoutPriority(1)
                     Spacer(minLength: 4)
                     if let project = task.project {
                         Text(project.name)

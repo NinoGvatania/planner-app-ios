@@ -132,9 +132,16 @@ struct MatrixView: View {
 
     // MARK: - Матрица 2×2 на весь экран
 
+    /// Клетки делят всю высоту. Если места мало (открыт бэклог, клавиатура), сначала убирается полка
+    /// «Не разобрано» (её задачи видны в списке и в доске при переносе), потом клетки сжимаются до шапки
+    /// со счётчиком — ничего не обрезается посередине строки.
     private func gridLayout(height: CGFloat) -> some View {
         let axisHeight: CGFloat = 22
-        let cellHeight = max(120, (height - axisHeight - trayHeight - cellSpacing * 3) / 2)
+        // Клетка с одной строкой: шапка, 3 + 44 на строку, 3 до распорки и 5 снизу (как в `cell`).
+        let minCell = cellHeaderHeight + 8 + (rowHeight + 3)
+        let withTray = (height - axisHeight - trayHeight - cellSpacing * 3) / 2
+        let showTray = withTray >= minCell
+        let cellHeight = max(cellHeaderHeight, showTray ? withTray : (height - axisHeight - cellSpacing * 2) / 2)
         return VStack(spacing: cellSpacing) {
             HStack(spacing: cellSpacing) {
                 Color.clear.frame(width: labelWidth, height: axisHeight)
@@ -154,9 +161,13 @@ struct MatrixView: View {
                 cell(.other, height: cellHeight)
             }
             .frame(height: cellHeight)
-            unsortedTray
-                .padding(.leading, labelWidth + cellSpacing)
+            if showTray {
+                unsortedTray
+                    .padding(.leading, labelWidth + cellSpacing)
+            }
         }
+        .frame(height: height, alignment: .top)
+        .clipped()
     }
 
     private func axisLabel(_ text: String) -> some View {
@@ -182,9 +193,10 @@ struct MatrixView: View {
     private func cell(_ quadrant: Quadrant, height: CGFloat) -> some View {
         let style = quadrant.style
         let list = items(for: quadrant)
-        let slots = max(1, Int((height - cellHeaderHeight - 8) / (rowHeight + 3)))
-        let visible = list.count > slots ? Array(list.prefix(slots - 1)) : list
-        let hidden = list.count - visible.count
+        // Строк влезает 0, если клетка сжата до шапки: тогда видно только число в шапке.
+        let slots = max(0, Int((height - cellHeaderHeight - 8) / (rowHeight + 3)))
+        let visible: [PlannerTask] = slots == 0 ? [] : (list.count > slots ? Array(list.prefix(slots - 1)) : list)
+        let hidden = slots == 0 ? 0 : list.count - visible.count
         return VStack(spacing: 3) {
             HStack(spacing: 6) {
                 Circle().fill(style.dot).frame(width: 10, height: 10)
@@ -221,7 +233,7 @@ struct MatrixView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Показать все: " + quadrant.name)
             }
-            if list.isEmpty {
+            if list.isEmpty, slots > 0 {
                 Text("Пусто — перетащи сюда")
                     .font(.system(size: 12.5))
                     .foregroundStyle(style.text.opacity(0.75))
@@ -231,7 +243,7 @@ struct MatrixView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 5)
-        .padding(.bottom, 5)
+        .padding(.bottom, slots > 0 ? 5 : 0)
         .frame(maxWidth: .infinity)
         .frame(height: height, alignment: .top)
         .clipped()

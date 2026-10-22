@@ -159,6 +159,13 @@ struct DayTimelineView: View {
             // Другой день на той же странице пейджера: панель без времени начинает свёрнутой.
             allDayExpanded = false
         }
+        .onChange(of: allDayHidden) { _, hidden in
+            // Лишние задачи без времени ушли (на сетку, в бэклог, сделаны): прятать больше нечего —
+            // панель сворачивается сама, а не висит пустой без кнопки.
+            if hidden == 0, allDayExpanded {
+                withAnimation(.easeOut(duration: 0.2)) { allDayExpanded = false }
+            }
+        }
         .onDisappear { stopAutoScroll() }
     }
 
@@ -279,18 +286,21 @@ struct DayTimelineView: View {
 
     private var allDayChipHeight: CGFloat { narrowColumns ? 24 : 28 }
 
+    /// Развёрнутая панель показывается, только пока в какой-то колонке есть спрятанные задачи.
+    private var allDayPanelShown: Bool { allDayExpanded && allDayHidden > 0 }
+
     /// Высота развёрнутой панели: до пяти строк, дальше — прокрутка внутри панели, сетка не страдает.
     private var allDayExpandedHeight: CGFloat {
         let rows = days.enumerated().map { allDay(column: $0.offset, day: $0.element).count }.max() ?? 1
         return CGFloat(min(max(rows, 1), 5)) * (allDayChipHeight + 4) + 8
     }
 
-    /// Строка без времени: слева одна кнопка-счётчик («+7» / число), справа колонки. Развёрнутая —
-    /// отдельная панель с прокруткой, не выше пяти строк, с отступом от сетки.
+    /// Строка без времени: слева одна кнопка-счётчик («+7» / число), справа колонки. Свёрнутая — 44 pt,
+    /// фишка по центру; развёрнутая — отдельная панель с прокруткой, не выше пяти строк, с отступом от сетки.
     private var allDayRow: some View {
         HStack(alignment: .top, spacing: 0) {
             allDayBadge
-            if allDayExpanded {
+            if allDayPanelShown {
                 ScrollView(.vertical, showsIndicators: false) {
                     allDayColumns
                 }
@@ -313,16 +323,19 @@ struct DayTimelineView: View {
                 let date = date(day)
                 let list = allDay(column: index, day: day)
                 let real = list.filter { $0.day == date }
-                let shown = allDayExpanded ? real : Array(real.prefix(1))
+                let shown = allDayPanelShown ? real : Array(real.prefix(1))
                 let phantoms = list.filter { $0.day != date }
-                VStack(spacing: 4) {
+                // Свёрнуто: колонка 44 pt, фишка по центру, нажимается вся колонка. Развёрнуто: строки
+                // через 4 pt, зона нажатия фишки захватывает половину зазора сверху и снизу.
+                VStack(spacing: 0) {
                     ForEach(shown + phantoms, id: \.id) { task in
                         allDayChip(task, phantom: task.day != date)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 40, alignment: .top)
+                .frame(maxWidth: .infinity, minHeight: allDayPanelShown ? 0 : Tokens.hitTarget,
+                       alignment: allDayPanelShown ? .top : .center)
                 .padding(.horizontal, narrowColumns ? 1 : 3)
-                .padding(.vertical, 6)
+                .padding(.vertical, allDayPanelShown ? 4 : 0)
                 .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
                 .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
                 .reportZone("allday-\(day)", enabled: live)
@@ -332,32 +345,39 @@ struct DayTimelineView: View {
 
     /// Единственная кнопка строки без времени: свёрнуто — «+7» (сколько спрятано), развёрнуто —
     /// общее число на акцентной капсуле; тап переключает. Когда прятать нечего — пусто.
+    /// Капсула стоит по центру первой фишки справа: свёрнуто — середина строки 44 pt, развёрнуто —
+    /// середина первой строки панели.
     private var allDayBadge: some View {
         let total = allDayTotal
         let hidden = allDayHidden
-        let active = total > 0 && (hidden > 0 || allDayExpanded)
+        let expanded = allDayPanelShown
+        let pill: CGFloat = 22
+        let center = expanded ? 4 + 2 + allDayChipHeight / 2 : Tokens.hitTarget / 2
         return Button {
             withAnimation(.easeOut(duration: 0.2)) { allDayExpanded.toggle() }
         } label: {
-            Text(allDayExpanded ? "\(total)" : "+\(hidden)")
+            Text(expanded ? "\(total)" : "+\(hidden)")
                 .font(.system(size: 11.5, weight: .bold))
                 .monospacedDigit()
-                .foregroundStyle(allDayExpanded ? Tokens.onAccent : Tokens.caption)
-                .frame(minWidth: 28, minHeight: 22)
+                .foregroundStyle(expanded ? Tokens.onAccent : Tokens.caption)
+                .frame(minWidth: 28, minHeight: pill)
                 .padding(.horizontal, 3)
-                .background(allDayExpanded ? Tokens.accent : Tokens.badge, in: Capsule())
-                .opacity(active ? 1 : 0)
-                .frame(width: Tokens.gutter - 7, height: Tokens.hitTarget)
+                .background(expanded ? Tokens.accent : Tokens.badge, in: Capsule())
+                .opacity(hidden > 0 ? 1 : 0)
+                .padding(.top, center - pill / 2)
+                .frame(width: Tokens.gutter - 7, height: Tokens.hitTarget, alignment: .top)
                 .padding(.trailing, 7)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!active)
-        .accessibilityLabel(allDayExpanded ? "Свернуть задачи без времени" : "Ещё \(hidden): показать все задачи без времени")
+        .disabled(hidden == 0)
+        .accessibilityLabel(expanded ? "Свернуть задачи без времени" : "Ещё \(hidden): показать все задачи без времени")
     }
 
     private func allDayChip(_ task: PlannerTask, phantom: Bool) -> some View {
         let style = task.style
+        // Свёрнуто — вся строка 44 pt; развёрнуто — фишка плюс по 2 pt зазора сверху и снизу.
+        let hitHeight = allDayPanelShown ? allDayChipHeight + 4 : Tokens.hitTarget
         return HStack(spacing: 2) {
             if !narrowColumns {
                 Button { onToggle(task) } label: {
@@ -365,7 +385,8 @@ struct DayTimelineView: View {
                         .strokeBorder(style.dot, lineWidth: 2)
                         .background(Circle().fill(task.isDone ? style.dot : Color.clear))
                         .frame(width: 13, height: 13)
-                        .frame(width: 28, height: 28)
+                        // Кружок нажимается на всю высоту строки, а не только внутри фишки.
+                        .frame(width: 30, height: hitHeight)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -380,10 +401,11 @@ struct DayTimelineView: View {
         }
         .padding(.leading, 1)
         .padding(.trailing, compactColumns ? 4 : 8)
-        .frame(height: narrowColumns ? 24 : 28)
+        .frame(height: allDayChipHeight)
         .foregroundStyle(style.text)
         .background(style.background, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style.border, lineWidth: 1))
+        .frame(height: hitHeight)
         .opacity(phantom ? 0 : (drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.55 : 1)))
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
@@ -557,8 +579,10 @@ struct DayTimelineView: View {
     }
 
     /// Ручка растягивания: нижняя двигает конец, верхняя — начало (конец на месте). Шаг 15 минут.
-    /// Зона нажатия: 12 pt снаружи блока и до 24 pt внутри (у коротких блоков — до половины высоты),
-    /// правее кружка-галочки. Тап без движения внутри блока открывает редактор, снаружи — снимает выделение.
+    /// Зона нажатия: до 12 pt снаружи блока (но не на соседний блок — между блоками встык всего 2 pt)
+    /// и внутрь блока столько, чтобы вместе вышло 44 pt (у коротких блоков — до половины высоты),
+    /// правее кружка-галочки и не шире своей колонки. Тап без движения внутри блока открывает редактор,
+    /// снаружи — снимает выделение.
     private func resizeHandle(_ task: PlannerTask, edge: HandleEdge, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
         let laneWidth = columnWidth / CGFloat(placement.laneCount)
         let width = max(0, laneWidth - 6)
@@ -567,10 +591,11 @@ struct DayTimelineView: View {
         let height = max(CGFloat(min(duration(of: task), ClockGrid.dayEnd - start)) / 60 * Tokens.hourHeight - 2, 24)
         let left = columnLeft + laneWidth * CGFloat(placement.lane) + 3
         let checkbox: CGFloat = laneWidth < 76 ? 0 : (laneWidth < 160 ? 26 : 34)
-        let zoneWidth = min(88, max(24, width - checkbox))
+        let zoneWidth = min(88, max(min(24, laneWidth), width - checkbox))
         let zoneCenterX = left + checkbox + (width - checkbox) / 2
-        let outside: CGFloat = 12
-        let inside = min(24, height / 2)
+        let free = freeSpace(around: task, top: top, bottom: top + height)
+        let outside = max(0, min(12, (edge == .top ? free.above : free.below) - 1))
+        let inside = min(height / 2, max(24, Tokens.hitTarget - outside))
         let zoneHeight = outside + inside
         let edgeY = edge == .top ? top : top + height
         let zoneCenterY = edge == .top ? top - outside + zoneHeight / 2 : top + height + outside - zoneHeight / 2
@@ -578,7 +603,8 @@ struct DayTimelineView: View {
         let originalEnd = originalStart + task.duration
         return Capsule()
             .fill(Color.white)
-            .frame(width: 44, height: 6)
+            // В узкой колонке недели капсула не шире самого блока и не ложится на соседний.
+            .frame(width: min(44, max(16, width - 4)), height: 6)
             .overlay(Capsule().stroke(Tokens.background, lineWidth: 2))
             .offset(x: left + width / 2 - zoneCenterX, y: edgeY - zoneCenterY)
             .frame(width: zoneWidth, height: zoneHeight)
@@ -625,6 +651,22 @@ struct DayTimelineView: View {
             .accessibilityHidden(true)
     }
 
+    /// Сколько свободного места (pt) над блоком и под ним до ближайших блоков этого же дня, которые целиком
+    /// выше или ниже. Блоки рядом в других дорожках (пересекаются по времени) не мешают: зона уже своей дорожки.
+    private func freeSpace(around task: PlannerTask, top: CGFloat, bottom: CGFloat) -> (above: CGFloat, below: CGFloat) {
+        var above = CGFloat.greatestFiniteMagnitude
+        var below = CGFloat.greatestFiniteMagnitude
+        for other in tasks where other.id != task.id && other.day == task.day {
+            guard let otherStart = other.start else { continue }
+            let otherTop = topInset + CGFloat(otherStart) / 60 * Tokens.hourHeight + 1
+            let otherHeight = max(CGFloat(min(other.duration, ClockGrid.dayEnd - otherStart)) / 60 * Tokens.hourHeight - 2, 24)
+            let otherBottom = otherTop + otherHeight
+            if otherBottom <= top + 0.5 { above = min(above, top - otherBottom) }
+            if otherTop >= bottom - 0.5 { below = min(below, otherTop - bottom) }
+        }
+        return (above, below)
+    }
+
     /// Пересчитать начало или длительность по положению пальца (координаты «planner») с учётом захвата;
     /// вызывается и из жеста, и из цикла автопрокрутки, пока палец стоит у края.
     private func applyResize(plannerY: CGFloat) {
@@ -665,13 +707,15 @@ struct DayTimelineView: View {
                     .foregroundStyle(Tokens.accent)
             )
             .overlay(alignment: .topLeading) {
+                // В узкой колонке недели — только начало и почти без полей: «14:00» влезает целиком.
                 Text(width < 90 ? ClockGrid.format(minutes: start) : ClockGrid.format(minutes: start) + "–" + ClockGrid.format(minutes: start + duration))
                     .font(.system(size: 12, weight: .bold))
                     .monospacedDigit()
                     .foregroundStyle(Tokens.accent)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 3)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.92)
+                    .padding(.horizontal, width < 90 ? 3 : 8)
+                    .padding(.top, 3)
             }
             .frame(width: width, height: height)
             .position(x: columnLeft + 3 + width / 2, y: top + height / 2)

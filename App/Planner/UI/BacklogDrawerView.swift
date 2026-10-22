@@ -138,11 +138,13 @@ struct BacklogDrawerView: View {
                 .accessibilityHint(isOpen ? "Свернуть" : "Открыть")
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction { toggle() }
-                Spacer()
+                Spacer(minLength: 8)
                 if let hint = hint {
                     Text(hint)
                         .font(.system(size: 13))
                         .foregroundStyle(Tokens.accent)
+                        .lineLimit(1)
+                        .transition(.opacity)
                 } else if overdueCount > 0, let onOverdue {
                     Button(action: onOverdue) {
                         HStack(spacing: 5) {
@@ -168,9 +170,12 @@ struct BacklogDrawerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Просрочено: \(overdueCount)")
+                    .transition(.opacity)
                 }
             }
             .frame(height: Tokens.hitTarget)
+            // Подсказка переноса и «Просрочено» сменяют друг друга плавно, без скачка.
+            .animation(.easeOut(duration: 0.15), value: hint)
         }
         .padding(.horizontal, 18)
         .frame(height: Tokens.drawerHeader, alignment: .top)
