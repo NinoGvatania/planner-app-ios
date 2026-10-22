@@ -641,9 +641,10 @@ struct PlannerScreen: View {
             var grab: CGFloat = min(CGFloat(task.duration) / 60 * Tokens.hourHeight / 2, 20)
             let fromTimeline = task.day != nil && task.start != nil
             if fromTimeline, let day = task.day, let start = task.start,
-               let column = zones["grid-\(DayMath.offset(of: day))"], let viewport = zones["timeline"] {
+               let column = zones["grid-\(DayMath.offset(of: day))"],
+               let viewportMinY = zones["timeline"]?.minY ?? gridScroll.viewportMinY {
                 // Колонка сообщает рамку в координатах содержимого сетки; переводим в «planner».
-                let blockTop = viewport.minY - gridScroll.offset + column.minY + gridTopInset + CGFloat(start) / 60 * Tokens.hourHeight
+                let blockTop = viewportMinY - gridScroll.offset + column.minY + gridTopInset + CGFloat(start) / 60 * Tokens.hourHeight
                 grab = max(0, startLocation.y - blockTop)
             }
             drag = DragState(taskID: task.id, title: task.title, duration: task.duration, location: location,
