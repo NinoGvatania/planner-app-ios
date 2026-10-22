@@ -173,10 +173,10 @@ struct StreakSheet: View {
                         .padding(.top, 10)
                         .padding(.bottom, 2)
                     ForEach(group.tasks) { task in
+                        // Строки как в бэклоге: кружок с заходом влево, разделитель снизу — без карточек.
                         TaskRowView(task: task, meta: graveMeta(task), dimmed: true) {
                             withAnimation(.easeOut(duration: 0.2)) { onRestore(task) }
                         }
-                        .background(Tokens.cluster, in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
             }

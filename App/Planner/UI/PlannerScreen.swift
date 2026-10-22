@@ -124,10 +124,12 @@ struct PlannerScreen: View {
 
     private func clampDay(_ value: Int) -> Int { max(-3650, min(3650, value)) }
 
-    /// Копии рутин — на неделю вперёд и до конца открытого периода.
+    /// Копии рутин — на неделю вперёд и до конца открытого периода; кроме года — и следующего, чтобы
+    /// при свайпе соседняя страница приезжала уже с рутинами.
     @discardableResult
     private func materializeRoutines() -> [PlannerTask] {
-        let lastDay = DayMath.calendar.date(byAdding: .day, value: -1, to: currentRange.end) ?? currentRange.end
+        let end = period == .year ? currentRange.end : pageRange(index: currentPeriodIndex + 1).end
+        let lastDay = DayMath.calendar.date(byAdding: .day, value: -1, to: end) ?? end
         return RoutineManager.materialize(in: context, through: lastDay)
     }
 
@@ -394,7 +396,8 @@ struct PlannerScreen: View {
             TaskEditSheet(
                 task: task,
                 onDelete: { deleteTask(task) },
-                onChanged: { NotificationScheduler.sync(tasks) }
+                // Включили «Повторять» или поменяли расписание — копии и до конца открытого периода.
+                onChanged: { NotificationScheduler.sync(tasks + materializeRoutines()) }
             )
         }
         .alert("Новая задача", isPresented: Binding(get: { namingTask != nil }, set: { if !$0 { namingTask = nil } }), presenting: namingTask) { task in
@@ -527,7 +530,8 @@ struct PlannerScreen: View {
                 get: { allDayExpandedDays == days },
                 set: { allDayExpandedDays = $0 ? days : nil }
             ),
-            islandInset: islandInset
+            islandInset: islandInset,
+            islandTop: zones["drawer"]?.minY ?? .infinity
         )
     }
 
@@ -731,9 +735,9 @@ struct PlannerScreen: View {
             drag = DragState(taskID: task.id, title: task.title, duration: task.duration, location: location,
                              grabOffsetY: grab, fromTimeline: task.day != nil, target: nil)
             selectedID = nil
-            if drawerOpen && task.isInBacklog {
-                // Остров уступает место: задачу тащат на календарь. После переноса — раскрыть снова,
-                // если так выбрано в настройках.
+            if drawerOpen {
+                // Остров уступает место любому переносу: раскрытый, он закрывал бы цели внизу экрана.
+                // После переноса — раскрыть снова, если так выбрано в настройках.
                 reopenBacklogAfterDrag = true
                 withAnimation(.spring(duration: 0.3)) { drawerOpen = false }
             }
@@ -801,7 +805,8 @@ struct PlannerScreen: View {
     }
 
     private func dropTarget(at point: CGPoint, duration: Int, grab: CGFloat) -> DropTarget? {
-        if let drawer = zones["drawer"], drawer.contains(point) { return .backlog }
+        // Остров и всё под ним (зазор до края экрана, клавиатура) — бэклог: сетка там скрыта, бросать в неё нельзя.
+        if let drawer = zones["drawer"], drawer.contains(point) || point.y >= drawer.minY { return .backlog }
         for raw in 0...4 {
             if let cell = zones["quad-\(raw)"], cell.contains(point) { return .quadrant(raw) }
         }

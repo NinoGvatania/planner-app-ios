@@ -63,6 +63,8 @@ struct DayTimelineView: View {
     @Binding var allDayExpanded: Bool
     /// Сколько снизу закрывает свёрнутый остров: сетка прокручивается под ним, у края переноса — его верх.
     var islandInset: CGFloat = 0
+    /// Верх острова в координатах «planner» сейчас (раскрыт, клавиатура): выше него — край автопрокрутки.
+    var islandTop: CGFloat = .infinity
 
     @State private var liveDuration: Int?
     @State private var liveStart: Int?
@@ -213,7 +215,7 @@ struct DayTimelineView: View {
         let edge: CGFloat = 52
         var direction = 0
         // Низ видимой сетки — верх острова: ниже палец уже над бэклогом.
-        let visibleBottom = viewport.maxY - islandInset
+        let visibleBottom = min(viewport.maxY - islandInset, islandTop - 8)
         if viewport.height > 0, fingerY >= viewport.minY, fingerY <= visibleBottom {
             if fingerY < viewport.minY + edge {
                 direction = -1
