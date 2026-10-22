@@ -33,7 +33,10 @@
   проваливание, доска целей), `ProjectsView`, `DashboardView` (Swift Charts), `BacklogDrawerView`,
   `TaskRowView` (единая строка бэклога и «Просрочено»), `TaskEditSheet`, `VoiceInputSheet`, `DraftEditSheet`, `OverdueSheet`, `SettingsSheet`, `StreakSheet`,
   `HeaderView` (`Period`, `Display`; заголовок‑меню периода, серия, кнопка режима, «…», «к сегодня»; «Просрочено» — в заголовке бэклога),
-  `WeekStripView` (пейджер недель), `TaskBlockView`, `Tokens`.
+  `WeekStripView` (пейджер недель; выбранный день — стеклянная «линза»: края `lensFrom`/`lensTo` двигаются
+  разными пружинами через отдельные `padding`, удержание поднимает линзу и тащит по дням; тёмные подписи —
+  содержимое самого стекла, `GlassEffectContainer` не использовать: он рисовал стекло поверх числа),
+  `TaskBlockView`, `Tokens`.
 - `App/QuickWidget/` — расширение‑виджет «Сегодня» (своя цель `QuickWidget` в `project.pbxproj`, читает
   `WidgetSnapshot` из контейнера группы `group.com.ninogvatania.planner`; App Groups прописаны
   в `Planner/Planner.entitlements` и `QuickWidget/QuickWidget.entitlements`).
