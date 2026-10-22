@@ -24,6 +24,8 @@ struct MatrixView: View {
     @State private var expanded: Int?
     /// Свёрнутые секции режима «Список».
     @State private var collapsed: Set<Int> = []
+    /// Начало экрана в координатах окна: строки списка квадранта лежат в List, их геометрия устаревает.
+    @State private var plannerOrigin = PlannerOrigin()
 
     private let labelWidth: CGFloat = 18
     private let cellSpacing: CGFloat = 8
@@ -93,6 +95,7 @@ struct MatrixView: View {
                     .transition(.opacity)
             }
         }
+        .trackPlannerOrigin(plannerOrigin)
         .animation(.easeOut(duration: 0.18), value: drag != nil)
         .animation(.easeInOut(duration: 0.22), value: expanded)
         .onChange(of: expanded) { _, value in
@@ -428,7 +431,7 @@ struct MatrixView: View {
         .opacity(drag?.taskID == task.id ? 0.35 : 1)
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
-        .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
+        .gesture(HoldDragGesture(windowOrigin: { plannerOrigin.point }, onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 
     private func meta(_ task: PlannerTask) -> String {

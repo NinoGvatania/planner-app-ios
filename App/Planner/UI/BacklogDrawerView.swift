@@ -43,6 +43,9 @@ struct BacklogDrawerView: View {
     /// Высота списка в момент, когда взяли задачу: пока её тянут, список не сжимается вместе с панелью,
     /// ячейка со строкой и её жестом остаётся жива.
     @State private var frozenListHeight: CGFloat?
+    /// Начало экрана в координатах окна — палец при переносе считается по UIKit, а не по устаревающей
+    /// геометрии ячейки List.
+    @State private var plannerOrigin = PlannerOrigin()
 
     private let rowHeight: CGFloat = 66
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
@@ -108,6 +111,7 @@ struct BacklogDrawerView: View {
         .frame(maxWidth: .infinity)
         .frame(height: height)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { drawerWidth = $0 }
+        .trackPlannerOrigin(plannerOrigin)
         .reportZone("drawer")
         .background {
             // Жидкое стекло: панель слегка просвечивает сетку под собой.
@@ -287,6 +291,7 @@ struct BacklogDrawerView: View {
         .onTapGesture { onEdit(task) }
         .gesture(
             HoldDragGesture(
+                windowOrigin: { plannerOrigin.point },
                 onChanged: { location, start in
                     // Первое срабатывание: запомнить высоту списка, пока панель ещё не начала сворачиваться.
                     if frozenListHeight == nil { frozenListHeight = visibleListHeight }

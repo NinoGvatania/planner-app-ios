@@ -48,6 +48,26 @@ extension View {
     }
 }
 
+/// Где начало пространства «planner» в координатах окна. Обычный класс: пишется из геометрии вида вне List,
+/// читается жестом в момент касания, перерисовки не нужны.
+final class PlannerOrigin {
+    var point: CGPoint = .zero
+}
+
+extension View {
+    /// Запоминать начало пространства «planner» в координатах окна по рамке этого вида (он должен быть
+    /// вне List, чтобы его геометрия была свежей).
+    func trackPlannerOrigin(_ origin: PlannerOrigin) -> some View {
+        onGeometryChange(for: CGPoint.self) { proxy in
+            let global = proxy.frame(in: .global)
+            let planner = proxy.frame(in: .named("planner"))
+            return CGPoint(x: global.minX - planner.minX, y: global.minY - planner.minY)
+        } action: { point in
+            origin.point = point
+        }
+    }
+}
+
 /// Страница пейджера просит не листать: внутри открыт список со свайпами строк и т. п.
 /// Обычный класс: читается в момент жеста, перерисовки не нужны.
 final class PagingLock {
