@@ -45,7 +45,7 @@ enum ClaudeExtractor {
         let tasks: [Item]
     }
 
-    private struct Item: Decodable {
+    struct Item: Decodable {
         let title: String
         let day: String
         let start: String
@@ -56,28 +56,28 @@ enum ClaudeExtractor {
         let note: String
     }
 
-    /// Схема для `output_config.format`: у каждого объекта `additionalProperties: false`, все поля обязательны.
+    /// Одна задача в ответе модели: у каждого объекта `additionalProperties: false`, все поля обязательны.
+    static let taskItemSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "title": ["type": "string", "description": "Короткое название задачи по-русски, глагол в неопределённой форме"],
+            "day": ["type": "string", "description": "YYYY-MM-DD или пустая строка"],
+            "start": ["type": "string", "description": "HH:MM (24 часа) или пустая строка"],
+            "durationMinutes": ["type": "integer", "description": "Длительность в минутах или 0"],
+            "important": ["type": "integer", "enum": [-1, 0, 1]],
+            "urgent": ["type": "integer", "enum": [-1, 0, 1]],
+            "project": ["type": "string", "description": "Название проекта или пустая строка"],
+            "note": ["type": "string", "description": "Важные подробности по-русски или пустая строка"],
+        ],
+        "required": ["title", "day", "start", "durationMinutes", "important", "urgent", "project", "note"],
+        "additionalProperties": false,
+    ]
+
+    /// Схема для `output_config.format`: список задач.
     static let schema: [String: Any] = [
         "type": "object",
         "properties": [
-            "tasks": [
-                "type": "array",
-                "items": [
-                    "type": "object",
-                    "properties": [
-                        "title": ["type": "string", "description": "Короткое название задачи по-русски, глагол в неопределённой форме"],
-                        "day": ["type": "string", "description": "YYYY-MM-DD или пустая строка"],
-                        "start": ["type": "string", "description": "HH:MM (24 часа) или пустая строка"],
-                        "durationMinutes": ["type": "integer", "description": "Длительность в минутах или 0"],
-                        "important": ["type": "integer", "enum": [-1, 0, 1]],
-                        "urgent": ["type": "integer", "enum": [-1, 0, 1]],
-                        "project": ["type": "string", "description": "Название проекта или пустая строка"],
-                        "note": ["type": "string", "description": "Важные подробности по-русски или пустая строка"],
-                    ],
-                    "required": ["title", "day", "start", "durationMinutes", "important", "urgent", "project", "note"],
-                    "additionalProperties": false,
-                ],
-            ],
+            "tasks": ["type": "array", "items": taskItemSchema],
         ],
         "required": ["tasks"],
         "additionalProperties": false,
@@ -199,6 +199,32 @@ enum ClaudeExtractor {
     /// Разобрать текст. Бросает `ExtractError` или `URLError`.
     static func extract(_ transcript: String, apiKey: String, model: String,
                         vocabulary: DictationVocabulary = DictationVocabulary()) async throws -> [DraftTask] {
+        let text = try await send(
+            model: model,
+            system: systemPrompt(today: Date(), vocabulary: vocabulary),
+            messages: [["role": "user", "content": "Расшифровка:\n\(transcript)"]],
+            schema: schema,
+            apiKey: apiKey
+        )
+        guard let payloadData = text.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(Payload.self, from: payloadData)
+        else { throw ExtractError.badResponse }
+        return drafts(from: payload.tasks)
+    }
+
+    static func drafts(from items: [Item]) -> [DraftTask] {
+        items.compactMap { item in
+            TaskExtractor.draft(
+                title: item.title, day: item.day, start: item.start, durationMinutes: item.durationMinutes,
+                important: item.important, urgent: item.urgent, project: item.project, note: item.note
+            )
+        }
+    }
+
+    /// Запрос к Messages API с ответом строго по схеме; возвращает JSON‑текст ответа.
+    /// Бросает `ExtractError` или `URLError`.
+    static func send(model: String, system: String, messages: [[String: Any]], schema: [String: Any],
+                     apiKey: String) async throws -> String {
         guard !apiKey.isEmpty else { throw ExtractError.noKey }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -210,8 +236,8 @@ enum ClaudeExtractor {
         let body: [String: Any] = [
             "model": model,
             "max_tokens": 16000,
-            "system": systemPrompt(today: Date(), vocabulary: vocabulary),
-            "messages": [["role": "user", "content": "Расшифровка:\n\(transcript)"]],
+            "system": system,
+            "messages": messages,
             // Средняя глубина размышлений: на контекст и смысл хватает, а ждать и платить меньше.
             "output_config": ["effort": "medium", "format": ["type": "json_schema", "schema": schema]],
         ]
@@ -230,16 +256,9 @@ enum ClaudeExtractor {
         }
         // Ответ по схеме — в текстовом блоке (блоки размышлений пропускаем).
         guard let content = json["content"] as? [[String: Any]],
-              let text = content.last(where: { $0["type"] as? String == "text" })?["text"] as? String,
-              let payloadData = text.data(using: .utf8),
-              let payload = try? JSONDecoder().decode(Payload.self, from: payloadData)
+              let text = content.last(where: { $0["type"] as? String == "text" })?["text"] as? String
         else { throw ExtractError.badResponse }
-        return payload.tasks.compactMap { item in
-            TaskExtractor.draft(
-                title: item.title, day: item.day, start: item.start, durationMinutes: item.durationMinutes,
-                important: item.important, urgent: item.urgent, project: item.project, note: item.note
-            )
-        }
+        return text
     }
 
     /// Проверить ключ и модель без генерации (бесплатно): запрос описания модели.

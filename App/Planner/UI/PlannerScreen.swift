@@ -18,6 +18,8 @@ struct PlannerScreen: View {
     @State private var drawerOpen = false
     @State private var showOverdue = false
     @State private var showVoice = false
+    /// Чат-ассистент (микрофон, когда задан ключ Claude).
+    @State private var showAssistant = false
     @State private var input = ""
     @State private var toast: ToastMessage?
     @State private var toastTask: Task<Void, Never>?
@@ -252,7 +254,8 @@ struct PlannerScreen: View {
             isOpen: $drawerOpen,
             input: $input,
             onSubmit: submitInput,
-            onVoice: { showVoice = true },
+            // С ключом Claude микрофон открывает чат-ассистента, без него — диктовку с разбором как раньше.
+            onVoice: { if ClaudeSettings.isEnabled { showAssistant = true } else { showVoice = true } },
             onToggle: toggleDone,
             drag: drag,
             onDragChanged: dragChanged,
@@ -370,6 +373,9 @@ struct PlannerScreen: View {
         .onChange(of: display) { _, _ in resetInteraction() }
         .fullScreenCover(isPresented: $showVoice) {
             VoiceInputSheet(onDone: addDrafts, vocabulary: voiceVocabulary)
+        }
+        .fullScreenCover(isPresented: $showAssistant) {
+            AssistantChatView(onAdd: addDrafts, vocabulary: voiceVocabulary)
         }
         .sheet(isPresented: $showProjects) {
             ProjectsSheet()
