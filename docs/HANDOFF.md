@@ -34,8 +34,10 @@
   `TaskRowView` (единая строка бэклога и «Просрочено»), `TaskEditSheet`, `VoiceInputSheet`, `DraftEditSheet`, `OverdueSheet`, `SettingsSheet`, `StreakSheet`,
   `HeaderView` (`Period`, `Display`; заголовок‑меню периода, серия, кнопка режима, «…», «к сегодня»; «Просрочено» — в заголовке бэклога),
   `WeekStripView` (пейджер недель; выбранный день — стеклянная «линза»: края `lensFrom`/`lensTo` двигаются
-  разными пружинами через отдельные `padding`, удержание поднимает линзу и тащит по дням; тёмные подписи —
-  содержимое самого стекла, `GlassEffectContainer` не использовать: он рисовал стекло поверх числа),
+  разными пружинами, каждый через свой `Animatable`‑модификатор (`LensEdges` → `LensTrailingEdge`) — две
+  пружины на одной рамке SwiftUI сливает в одну, и линза не тянулась; удержание поднимает линзу и тащит
+  по дням (с запасом 0,12 дня на границе); тёмные подписи — содержимое самого стекла, светлые под линзой
+  вырезаны маской; `GlassEffectContainer` не использовать: он рисовал стекло поверх числа),
   `TaskBlockView`, `Tokens`.
 - `App/QuickWidget/` — расширение‑виджет «Сегодня» (своя цель `QuickWidget` в `project.pbxproj`, читает
   `WidgetSnapshot` из контейнера группы `group.com.ninogvatania.planner`; App Groups прописаны

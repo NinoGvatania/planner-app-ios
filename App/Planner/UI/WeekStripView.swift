@@ -18,13 +18,13 @@ struct WeekStripView: View {
     var dragging = false
 
     /// Края линзы в ширинах вкладки: левый и правый. В покое `lensTo == lensFrom + 1`. Края двигаются
-    /// разными пружинами — так линза вытягивается в сторону движения и подтягивается, как капля.
-    /// Каждый край задаёт свой отступ (`padding`), поэтому анимации краёв не сливаются в одну.
+    /// разными пружинами — линза вытягивается в сторону движения и подтягивается, как капля. Каждый край
+    /// анимирует свой модификатор (`LensEdges`): у одного вида рамка одна, и две пружины на ней слились бы.
     @State private var lensFrom: CGFloat
     @State private var lensTo: CGFloat
     @State private var width: CGFloat = 0
-    /// Центр поднятой линзы по горизонтали (в координатах страницы); `nil` — линза лежит.
-    @GestureState private var lensFinger: CGFloat? = nil
+    /// Поднятая линза; `nil` — линза лежит.
+    @GestureState private var lensHold: LensHold? = nil
     /// Линзу держат: пейджер в это время не листает. Обычный класс — читается из жеста пейджера.
     @State private var lensLock = LensLock()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -70,18 +70,18 @@ struct WeekStripView: View {
         .onChange(of: dayOffset) { _, value in
             // День сменился не линзой (тап, листание недели, «сегодня», «пружина» при переносе) —
             // линза перетекает туда же. При листании недели день недели тот же, и линза стоит.
-            if lensFinger == nil { moveLens(to: Self.weekday(of: value)) }
+            if lensHold == nil { moveLens(to: Self.weekday(of: value)) }
         }
-        .onChange(of: lensFinger) { old, new in
+        .onChange(of: lensHold) { old, new in
             lensLock.held = new != nil
             if let new {
-                followFinger(new, previous: old)
+                followFinger(new.x, previous: old?.x)
             } else {
-                moveLens(to: Self.weekday(of: dayOffset))
+                settleLens()
             }
         }
         // Щелчок, когда линзу подняли, на каждом новом дне под ней и когда отпустили.
-        .sensoryFeedback(.selection, trigger: lensFinger == nil ? nil : dayOffset)
+        .sensoryFeedback(.selection, trigger: lensHold == nil ? nil : dayOffset)
     }
 
     private func select(_ offset: Int) {
@@ -112,7 +112,8 @@ struct WeekStripView: View {
         withAnimation(forward ? trail : lead) { lensFrom = target }
     }
 
-    /// Поднятая линза идёт за пальцем (тоже с вытягиванием), день под её центром сразу открывается.
+    /// Поднятая линза идёт за пальцем (тоже с вытягиванием). День под ней открывается, когда её центр
+    /// ушёл за середину соседнего дня с запасом: на границе двух дней выбор не дребезжит.
     private func followFinger(_ x: CGFloat, previous: CGFloat?) {
         let m = metrics
         guard m.slot > 0 else { return }
@@ -124,25 +125,38 @@ struct WeekStripView: View {
             withAnimation(forward ? lead : trail) { lensTo = edge + 1 }
             withAnimation(forward ? trail : lead) { lensFrom = edge }
         }
-        let slot = min(6, max(0, Int(edge.rounded())))
-        let target = DayMath.weekStartOffset(containing: dayOffset) + slot
+        let current = Self.weekday(of: dayOffset)
+        if abs(edge - CGFloat(current)) > 0.62 {
+            open(slot: Int(edge.rounded()))
+        }
+    }
+
+    /// Отпустили (или жест сорвался): линза садится на ближайший день.
+    private func settleLens() {
+        let nearest = min(6, max(0, Int(lensFrom.rounded())))
+        if nearest != Self.weekday(of: dayOffset) {
+            open(slot: nearest)
+        } else {
+            moveLens(to: nearest)
+        }
+    }
+
+    /// Открыть день недели `slot` той же недели. Пока линзу держат, сама линза за этим не едет.
+    private func open(slot: Int) {
+        let target = DayMath.weekStartOffset(containing: dayOffset) + min(6, max(0, slot))
         if target != dayOffset { dayOffset = target }
     }
 
-    /// Удержание на выбранном дне поднимает линзу, дальше она идёт за пальцем.
+    /// Удержание на выбранном дне поднимает линзу, дальше она идёт за пальцем — за ту точку, за которую
+    /// её взяли: центр запоминается в момент подъёма.
     private func lensGesture(weekday: Int) -> some Gesture {
-        let m = metrics
+        let restCenter = metrics.center(weekday)
         return LongPressGesture(minimumDuration: 0.25)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.pageSpace)))
-            .updating($lensFinger) { value, state, _ in
+            .updating($lensHold) { value, state, _ in
                 guard case .second(true, let drag) = value else { return }
-                if let drag {
-                    // Палец мог взять линзу не за середину — держим её за ту же точку.
-                    let grabbedCenter = m.center(m.slot(at: drag.startLocation.x))
-                    state = drag.location.x - (drag.startLocation.x - grabbedCenter)
-                } else {
-                    state = m.center(weekday)
-                }
+                let grabbed = state?.grabbed ?? restCenter
+                state = LensHold(grabbed: grabbed, x: grabbed + (drag?.translation.width ?? 0))
             }
     }
 
@@ -155,15 +169,27 @@ struct WeekStripView: View {
     /// недели она приезжает вместе с новой неделей, а не появляется после.
     private func week(_ first: Int, live: Bool) -> some View {
         let weekday = Self.weekday(of: dayOffset)
+        // Точки «есть задачи» — один раз на страницу: подписи рисуются дважды (обычные и на линзе).
+        let dots = (0..<7).map { hasTasks(first + $0) }
+        let lifted = lensHold != nil
         return ZStack(alignment: .topLeading) {
             HStack(spacing: StripMetrics.spacing) {
-                ForEach(first..<(first + 7), id: \.self) { offset in
-                    dayTab(offset, live: live)
+                ForEach(0..<7, id: \.self) { index in
+                    dayTab(first + index, hasDot: dots[index], live: live)
                 }
             }
             .padding(.horizontal, StripMetrics.inset)
+            // Под стеклом светлых подписей нет — только фон: иначе они просвечивали бы рядом с тёмными.
+            .mask {
+                Color.clear.modifier(LensEdges(from: lensFrom, to: lensTo) { from, to in
+                    lensHole(from: from, to: to, lifted: lifted)
+                })
+            }
 
-            lens(first: first)
+            Color.clear
+                .modifier(LensEdges(from: lensFrom, to: lensTo) { from, to in
+                    lens(first: first, dots: dots, from: from, to: to, lifted: lifted)
+                })
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
 
@@ -183,41 +209,60 @@ struct WeekStripView: View {
         .padding(.bottom, 6)
     }
 
-    /// Стеклянная линза. Тёмные подписи дней — содержимое самого стекла, поэтому стекло всегда под ними
-    /// (стекло, нарисованное отдельным слоем, закрывало число). Подписи сдвинуты на левый край линзы,
-    /// чтобы стоять ровно над своими днями и «проявляться», когда линза над ними проезжает.
-    private func lens(first: Int) -> some View {
+    private static let lensShape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+    /// Пружина подъёма линзы: она чуть больше и сплющена, как капля под пальцем.
+    private static let liftSpring = Animation.spring(response: 0.3, dampingFraction: 0.62)
+
+    /// Стеклянная линза с краями `from`…`to`. Тёмные подписи — содержимое самого стекла, поэтому стекло
+    /// всегда под ними (стекло, нарисованное отдельным слоем, закрывало число). Подписи сдвинуты на левый
+    /// край линзы, чтобы стоять ровно над своими днями и «проявляться», когда линза над ними проезжает.
+    private func lens(first: Int, dots: [Bool], from: CGFloat, to: CGFloat, lifted: Bool) -> some View {
         let m = metrics
-        let lifted = lensFinger != nil
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let left = m.left(from)
         return Color.clear
             .overlay(alignment: .leading) {
                 HStack(spacing: StripMetrics.spacing) {
-                    ForEach(first..<(first + 7), id: \.self) { offset in
-                        tabLabel(offset, onLens: true)
+                    ForEach(0..<7, id: \.self) { index in
+                        tabLabel(first + index, hasDot: dots[index], onLens: true)
                     }
                 }
                 .padding(.horizontal, StripMetrics.inset)
                 .frame(width: m.width, height: 56)
-                .offset(x: -m.left(lensFrom))
+                .offset(x: -left)
             }
-            .clipShape(shape)
-            .animation(.spring(response: 0.3, dampingFraction: 0.62)) { content in
+            .frame(width: max(0, m.right(to) - left), height: 56)
+            .clipShape(Self.lensShape)
+            .animation(Self.liftSpring) { content in
                 content
-                    .glassEffect(.regular.tint(Tokens.accent.opacity(lifted ? 0.72 : 0.85)), in: shape)
-                    // Поднятая линза чуть больше и сплющена, как капля под пальцем.
+                    .glassEffect(.regular.tint(Tokens.accent.opacity(lifted ? 0.72 : 0.85)), in: Self.lensShape)
                     .scaleEffect(x: lifted ? 1.14 : 1, y: lifted ? 1.06 : 1)
             }
-            .padding(.leading, m.left(lensFrom))
-            .padding(.trailing, max(0, m.width - m.right(lensTo)))
-            .frame(width: m.width, height: 56)
+            .offset(x: left)
             .opacity(m.slot > 0 ? 1 : 0)
     }
 
-    private func dayTab(_ offset: Int, live: Bool) -> some View {
+    /// Маска обычных подписей: всё, кроме места линзы (с тем же подъёмом).
+    private func lensHole(from: CGFloat, to: CGFloat, lifted: Bool) -> some View {
+        let m = metrics
+        let left = m.left(from)
+        return Rectangle()
+            .overlay(alignment: .topLeading) {
+                Self.lensShape
+                    .frame(width: max(0, m.right(to) - left), height: 56)
+                    .animation(Self.liftSpring) { content in
+                        content.scaleEffect(x: lifted ? 1.14 : 1, y: lifted ? 1.06 : 1)
+                    }
+                    .offset(x: left)
+                    .blendMode(.destinationOut)
+                    .opacity(m.slot > 0 ? 1 : 0)
+            }
+            .compositingGroup()
+    }
+
+    private func dayTab(_ offset: Int, hasDot: Bool, live: Bool) -> some View {
         let selected = offset == dayOffset
         let hovered = hoveredOffset == offset && !selected
-        return tabLabel(offset, onLens: false)
+        return tabLabel(offset, hasDot: hasDot, onLens: false)
             .background {
                 if hovered {
                     RoundedRectangle(cornerRadius: 14).fill(Tokens.accent.opacity(0.22))
@@ -234,7 +279,7 @@ struct WeekStripView: View {
     }
 
     /// Подписи вкладки: обычные или тёмные — для линзы.
-    private func tabLabel(_ offset: Int, onLens: Bool) -> some View {
+    private func tabLabel(_ offset: Int, hasDot: Bool, onLens: Bool) -> some View {
         let date = DayMath.day(offset: offset)
         return VStack(spacing: 3) {
             Text(DayMath.weekdayShort[DayMath.weekdayIndex(date)])
@@ -244,7 +289,7 @@ struct WeekStripView: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(onLens ? Tokens.onAccent : (offset == 0 ? Tokens.accent : (offset < 0 ? Tokens.muted : Tokens.text)))
             Circle()
-                .fill(hasTasks(offset) ? (onLens ? Tokens.onAccent : Color(hex: 0x5A5B63)) : Color.clear)
+                .fill(hasDot ? (onLens ? Tokens.onAccent : Color(hex: 0x5A5B63)) : Color.clear)
                 .frame(width: 4, height: 4)
         }
         .frame(maxWidth: .infinity)
@@ -262,18 +307,51 @@ private struct StripMetrics {
     var slot: CGFloat { max(0, (width - 2 * Self.inset - 6 * Self.spacing) / 7) }
     private var step: CGFloat { slot + Self.spacing }
 
-    /// Левый край для края линзы `edge` (в ширинах вкладки).
+    /// Левый край для левого края линзы `edge` (в ширинах вкладки).
     func left(_ edge: CGFloat) -> CGFloat { Self.inset + edge * step }
     /// Правый край для правого края линзы `edge`.
     func right(_ edge: CGFloat) -> CGFloat { Self.inset + edge * step - Self.spacing }
     func center(_ weekday: Int) -> CGFloat { Self.inset + CGFloat(weekday) * step + slot / 2 }
     /// Левый край линзы с центром в `x`.
     func edge(atCenter x: CGFloat) -> CGFloat { step > 0 ? (x - Self.inset - slot / 2) / step : 0 }
-    /// Вкладка под точкой `x`.
-    func slot(at x: CGFloat) -> Int {
-        guard step > 0 else { return 0 }
-        return min(6, max(0, Int(((x - Self.inset + Self.spacing / 2) / step).rounded(.down))))
+}
+
+/// Края линзы, каждый со своим аниматором: левый анимирует этот модификатор, правый — вложенный.
+/// Так пружины краёв не сливаются, и линза вытягивается. `lens` получает уже промежуточные края.
+private struct LensEdges<Lens: View>: ViewModifier, Animatable {
+    var from: CGFloat
+    let to: CGFloat
+    let lens: (_ from: CGFloat, _ to: CGFloat) -> Lens
+
+    nonisolated var animatableData: CGFloat {
+        get { from }
+        set { from = newValue }
     }
+
+    func body(content: Content) -> some View {
+        content.modifier(LensTrailingEdge(from: from, to: to, lens: lens))
+    }
+}
+
+private struct LensTrailingEdge<Lens: View>: ViewModifier, Animatable {
+    let from: CGFloat
+    var to: CGFloat
+    let lens: (_ from: CGFloat, _ to: CGFloat) -> Lens
+
+    nonisolated var animatableData: CGFloat {
+        get { to }
+        set { to = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .topLeading) { lens(from, to) }
+    }
+}
+
+/// Поднятая линза: центр под пальцем в момент подъёма и текущий центр.
+private struct LensHold: Equatable {
+    var grabbed: CGFloat
+    var x: CGFloat
 }
 
 /// Линзу держат пальцем. Обычный класс: пейджер спрашивает его из жеста, перерисовки не нужны.
