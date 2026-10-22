@@ -272,7 +272,11 @@ struct PlannerScreen: View {
             .overlay(alignment: toastAboveDrawer ? .top : .bottom) { toastLayer }
         }
         .coordinateSpace(name: "planner")
-        .onPreferenceChange(ZoneFramesKey.self) { zones = $0 }
+        .onPreferenceChange(ZoneFramesKey.self) { frames in
+            zones = frames
+            // Верх сетки на случай, когда «timeline» молчит (свайп): последнее известное значение.
+            if let timeline = frames["timeline"] { gridScroll.viewportMinY = timeline.minY }
+        }
         .onChange(of: zones) { _, _ in refreshDropTarget() }
         .background(Tokens.background.ignoresSafeArea())
         .foregroundStyle(Tokens.text)

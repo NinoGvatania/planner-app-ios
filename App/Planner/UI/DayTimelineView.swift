@@ -152,7 +152,6 @@ struct DayTimelineView: View {
                     return CGRect(x: 0, y: frame.minY, width: 0, height: frame.height)
                 } action: { frame in
                     viewport = frame
-                    if live { scroll.viewportMinY = frame.minY }
                     scrollToNowIfNeeded()
                 }
                 .reportZone("timeline", enabled: live && !pagerSwiping)
