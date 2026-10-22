@@ -36,6 +36,10 @@ struct PlannerScreen: View {
     @State private var showProjects = false
     @State private var showSettings = false
     @State private var showStreak = false
+    /// Фокус в строке ввода бэклога: только тогда экран уступает место клавиатуре.
+    @FocusState private var inputFocused: Bool
+    /// Дни страницы сетки, у которой развёрнута строка «весь день» (у уходящей при свайпе она не схлопывается).
+    @State private var allDayExpandedDays: [Int]?
     /// Задачи, отмеченные сделанными прямо в листе «Просрочено»: остаются в нём, чтобы можно было вернуть.
     @State private var recentlyDoneOverdue: Set<UUID> = []
     @AppStorage("colorMode") private var colorModeRaw = ColorMode.quadrant.rawValue
@@ -156,6 +160,16 @@ struct PlannerScreen: View {
         return scope + " · " + count
     }
 
+    /// Короткий подзаголовок для узких экранов: «Сегодня · 12 задач», «Пн · 3 задачи».
+    private var headerShortSubtitle: String {
+        guard period == .day else { return headerSubtitle }
+        let n = filtered(visibleTasks, in: currentRange).count
+        let count = "\(n) " + DayMath.plural(n, "задача", "задачи", "задач")
+        let relative = dayOffset == 0 ? "Сегодня" : (dayOffset == 1 ? "Завтра" : (dayOffset == -1 ? "Вчера" : ""))
+        let scope = relative.isEmpty ? DayMath.weekdayShort[DayMath.weekdayIndex(monthAnchor)].capitalizedFirst : relative
+        return scope + " · " + count
+    }
+
     /// «20–22 окт» или «30 окт – 1 ноя».
     private func rangeTitle(from first: Int, to last: Int) -> String {
         let d0 = DayMath.day(offset: first), d1 = DayMath.day(offset: last)
@@ -177,6 +191,8 @@ struct PlannerScreen: View {
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
                 .onChange(of: geometry.size, initial: true) { _, size in rootSize = size }
         }
+        // Клавиатура алерта «Новая задача» или листа не сжимает экран под ними — только своя строка ввода.
+        .ignoresSafeArea(inputFocused ? [] : .keyboard, edges: .bottom)
     }
 
     private var screen: some View {
@@ -184,6 +200,7 @@ struct PlannerScreen: View {
             HeaderView(
                 title: headerTitle,
                 subtitle: headerSubtitle,
+                shortSubtitle: headerShortSubtitle,
                 streak: streakInfo.current,
                 todayNumber: DayMath.dayOfMonth(today),
                 period: Binding(
@@ -194,7 +211,10 @@ struct PlannerScreen: View {
                     get: { display },
                     set: { value in withAnimation(.easeOut(duration: 0.2)) { display = value } }
                 ),
-                showDone: $showDone,
+                showDone: Binding(
+                    get: { showDone },
+                    set: { value in withAnimation(.spring(duration: 0.3)) { showDone = value } }
+                ),
                 colorMode: Binding(
                     get: { ColorMode(rawValue: colorModeRaw) ?? .quadrant },
                     set: { colorModeRaw = $0.rawValue }
@@ -220,7 +240,8 @@ struct PlannerScreen: View {
                 index: periodIndex,
                 blocked: { drag != nil || gridScroll.interacting || pagingLock.locked },
                 cancelWhen: drag != nil,
-                hintKey: display == .calendar && period == .month ? "month" : nil
+                hintKey: display == .calendar && period == .month ? "month" : nil,
+                keyed: !(display == .calendar && (period == .day || period == .week))
             ) { index, live, tick in
                 page(index: index, live: live, tick: tick)
             }
@@ -240,16 +261,20 @@ struct PlannerScreen: View {
                 maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - (isDayGrid ? 64 : 0) - 24) : .infinity,
                 onDragCancelled: dragCancelled,
                 overdueCount: overdueTasks.count,
-                onOverdue: { showOverdue = true }
+                onOverdue: { showOverdue = true },
+                inputFocus: $inputFocused
             )
+            .overlay(alignment: toastAboveDrawer ? .top : .bottom) { toastLayer }
         }
         .coordinateSpace(name: "planner")
         .onPreferenceChange(ZoneFramesKey.self) { zones = $0 }
         .onChange(of: zones) { _, _ in refreshDropTarget() }
         .background(Tokens.background.ignoresSafeArea())
         .foregroundStyle(Tokens.text)
-        .overlay(alignment: .bottom) { toastView }
         .overlay(alignment: .topLeading) { ghostView }
+        // Число строк бэклога меняет высоту панели: пейджер над ней сжимается той же пружиной,
+        // без полосы пустого фона между ними.
+        .animation(.spring(duration: 0.3), value: backlogTasks.count)
         .animation(.easeOut(duration: 0.22), value: toast)
         .sheet(isPresented: $showOverdue, onDismiss: { recentlyDoneOverdue = [] }) {
             OverdueSheet(
@@ -308,6 +333,7 @@ struct PlannerScreen: View {
     /// Сменили период или режим: выделение и перенос сбрасываются.
     private func resetInteraction() {
         selectedID = nil
+        allDayExpandedDays = nil
         drag = nil
         springTask?.cancel()
         springOffset = nil
@@ -411,7 +437,11 @@ struct PlannerScreen: View {
             scroll: gridScroll,
             onAutoScrollTick: refreshDropTarget,
             scrollToNowRequest: scrollToNowRequest,
-            onDragCancelled: dragCancelled
+            onDragCancelled: dragCancelled,
+            allDayExpanded: Binding(
+                get: { allDayExpandedDays == days },
+                set: { allDayExpandedDays = $0 ? days : nil }
+            )
         )
     }
 
@@ -458,34 +488,51 @@ struct PlannerScreen: View {
 
     // MARK: - Оверлеи
 
-    @ViewBuilder
-    private var toastView: some View {
-        if let toast = toast {
-            HStack(spacing: 12) {
-                Text(toast.message)
-                    .font(.system(size: 14))
-                    .multilineTextAlignment(.leading)
-                if let title = toast.actionTitle {
-                    Button(title) {
-                        toastAction?()
-                        toastTask?.cancel()
-                        self.toast = nil
-                    }
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Tokens.accent)
-                    .frame(minHeight: Tokens.hitTarget)
-                }
+    /// Над панелью бэклога хватает места для тоста (шапка и полоска недели не задеты).
+    private var toastAboveDrawer: Bool {
+        let drawerTop = zones["drawer"]?.minY ?? (rootSize.height - Tokens.drawerCollapsed)
+        let chrome: CGFloat = 62 + (isDayGrid ? 64 : 0)
+        return drawerTop - chrome >= 48 + 12 + 8
+    }
+
+    /// Тост висит на панели бэклога и едет вместе с ней: в 12 pt над её верхом, а если выше места нет
+    /// (панель на весь экран, клавиатура) — внутри панели прямо над строкой ввода. Переход только у самой
+    /// плашки: 14 pt и прозрачность, как в прототипе, а не пролёт через всю панель.
+    private var toastLayer: some View {
+        ZStack {
+            if let toast = toast {
+                toastPill(toast)
+                    .transition(.offset(y: 14).combined(with: .opacity))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, toast.actionTitle == nil ? 10 : 2)
-            .glassEffect(.regular.tint(Tokens.badge.opacity(0.7)), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
-            .shadow(color: Color.black.opacity(0.4), radius: 12, y: 8)
-            .padding(.horizontal, 16)
-            .padding(.bottom, (zones["drawer"].map { rootSize.height - $0.minY } ?? Tokens.drawerCollapsed) + 12)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-            .allowsHitTesting(toast.actionTitle != nil)
         }
+        .padding(.horizontal, 16)
+        .padding(.bottom, toastAboveDrawer ? 0 : 60 + 8)
+        .alignmentGuide(.top) { $0[.bottom] + 12 }
+    }
+
+    private func toastPill(_ toast: ToastMessage) -> some View {
+        HStack(spacing: 12) {
+            Text(toast.message)
+                .font(.system(size: 14))
+                .multilineTextAlignment(.leading)
+                .lineLimit(3)
+            if let title = toast.actionTitle {
+                Button(title) {
+                    toastAction?()
+                    toastTask?.cancel()
+                    self.toast = nil
+                }
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Tokens.accent)
+                .frame(minHeight: Tokens.hitTarget)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, toast.actionTitle == nil ? 10 : 2)
+        .glassEffect(.regular.tint(Tokens.badge.opacity(0.7)), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.4), radius: 12, y: 8)
+        .allowsHitTesting(toast.actionTitle != nil)
     }
 
     @ViewBuilder

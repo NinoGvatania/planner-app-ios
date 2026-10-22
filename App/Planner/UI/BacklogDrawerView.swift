@@ -1,5 +1,6 @@
 import PlannerCore
 import SwiftUI
+import UIKit
 
 /// Панель бэклога снизу. Три положения: свёрнута (только заголовок с счётчиком и «Просрочено» плюс
 /// строка ввода — ничего не торчит), открыта (до 6 строк) и на весь экран. Тап по заголовку
@@ -25,9 +26,16 @@ struct BacklogDrawerView: View {
     /// «Просрочено · N» в заголовке панели; тап открывает лист просроченных.
     var overdueCount: Int = 0
     var onOverdue: (() -> Void)? = nil
+    /// Фокус строки ввода: экран уступает место клавиатуре только ей.
+    var inputFocus: FocusState<Bool>.Binding
 
-    /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное).
-    @State private var dragDelta: CGFloat = 0
+    /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное). Состояние жеста: если свайп
+    /// оборвала система (звонок, Пункт управления), оно само возвращается к нулю пружиной, и панель
+    /// не застревает на промежуточной высоте.
+    @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.3)))
+    private var dragDelta: CGFloat = 0
+    /// Ширина панели — чтобы знать, какие названия займут две строки.
+    @State private var drawerWidth: CGFloat = 0
     /// Панель раскрыта на весь экран.
     @State private var isFull = false
     /// Рамки строк в координатах «planner» — чтобы понять, какую задачу взяли удержанием.
@@ -37,7 +45,26 @@ struct BacklogDrawerView: View {
     private let rowHeight: CGFloat = 66
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
     private var collapsedHeight: CGFloat { Tokens.drawerCollapsed }
-    private var listHeight: CGFloat { tasks.isEmpty ? 48 : CGFloat(min(tasks.count, 6)) * rowHeight + 8 }
+    /// Высота открытого списка — по настоящим строкам: название в две строки делает строку 84 pt, а не 66.
+    /// Пустой список — одна строка «Пусто» (66) и поля.
+    private var listHeight: CGFloat {
+        tasks.isEmpty ? rowHeight + 8 : tasks.prefix(6).reduce(CGFloat(8)) { $0 + estimatedRowHeight($1) }
+    }
+
+    /// Строка `TaskRowView`: поля 8 + 8, отступ 10, название 16 pt (до двух строк), 4, вторая строка 13 pt.
+    /// Название начинается через 40 pt от края строки (кружок 44 с заходом −10 и промежуток 6).
+    private func estimatedRowHeight(_ task: PlannerTask) -> CGFloat {
+        guard drawerWidth > 0 else { return rowHeight }
+        let width = drawerWidth - 18 - 16 - 40
+        let font = UIFont.systemFont(ofSize: 16)
+        let bounds = (task.title as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        )
+        return bounds.height > font.lineHeight * 1.5 ? 84 : rowHeight
+    }
     private var fullHeight: CGFloat { maxHeight.isFinite ? max(collapsedHeight + 100, maxHeight) : Tokens.drawerCollapsed + listHeight }
     private var openHeight: CGFloat { min(Tokens.drawerCollapsed + listHeight, fullHeight) }
     private var canExpand: Bool { fullHeight > openHeight + 60 }
@@ -90,6 +117,7 @@ struct BacklogDrawerView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: height)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { drawerWidth = $0 }
         .reportZone("drawer")
         .background {
             // Жидкое стекло: панель слегка просвечивает сетку под собой.
@@ -107,7 +135,6 @@ struct BacklogDrawerView: View {
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
                 .ignoresSafeArea(edges: .bottom)
         }
-        .animation(.spring(duration: 0.3), value: tasks.count)
         .onChange(of: isOpen) { _, open in
             if !open { isFull = false }
         }
@@ -185,8 +212,8 @@ struct BacklogDrawerView: View {
         .onTapGesture(perform: toggle)
         .gesture(
             DragGesture(minimumDistance: 10, coordinateSpace: .named("planner"))
-                .onChanged { value in
-                    dragDelta = value.translation.height
+                .updating($dragDelta) { value, state, _ in
+                    state = value.translation.height
                 }
                 .onEnded { value in
                     let projected = restHeight - value.predictedEndTranslation.height
@@ -219,7 +246,6 @@ struct BacklogDrawerView: View {
         if canExpand { detents.append(fullHeight) }
         let target = detents.min { abs($0 - projected) < abs($1 - projected) } ?? collapsedHeight
         withAnimation(.spring(duration: 0.3)) {
-            dragDelta = 0
             isFull = canExpand && target == fullHeight
             isOpen = target > collapsedHeight
         }
@@ -278,6 +304,7 @@ struct BacklogDrawerView: View {
         // Строка ввода и круглая кнопка — отдельные стеклянные фигуры (без контейнера: он склеивал бы их).
         HStack(alignment: .top, spacing: 10) {
             TextField("Завтра в 10 созвон, важно", text: $input)
+                .focused(inputFocus)
                 .font(.system(size: 15))
                 .foregroundStyle(Tokens.text)
                 .padding(.horizontal, 16)

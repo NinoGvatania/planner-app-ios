@@ -79,11 +79,14 @@ struct MatrixView: View {
 
     var body: some View {
         ZStack {
+            // Переход «толчком»: список квадранта въезжает справа на непрозрачном фоне, сетка уезжает влево —
+            // два слоя текста не накладываются.
             if let raw = expanded {
                 detail(raw)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(.move(edge: .trailing))
             } else {
                 overview
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
             if drag != nil {
                 dropBoard
@@ -107,7 +110,7 @@ struct MatrixView: View {
                 Text("Список").tag("list")
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 10)
             .padding(.bottom, 8)
             if isList {
                 ScrollView(showsIndicators: false) {
@@ -134,40 +137,78 @@ struct MatrixView: View {
 
     /// Клетки делят всю высоту. Если места мало (открыт бэклог, клавиатура), сначала убирается полка
     /// «Не разобрано» (её задачи видны в списке и в доске при переносе), потом клетки сжимаются до шапки
-    /// со счётчиком — ничего не обрезается посередине строки.
+    /// со счётчиком, а если не влезают и шапки — вместо сетки одна строка капсул «точка + число».
+    /// Ничего не обрезается посередине строки.
+    @ViewBuilder
     private func gridLayout(height: CGFloat) -> some View {
         let axisHeight: CGFloat = 22
         // Клетка с одной строкой: шапка, 3 + 44 на строку, 3 до распорки и 5 снизу (как в `cell`).
         let minCell = cellHeaderHeight + 8 + (rowHeight + 3)
         let withTray = (height - axisHeight - trayHeight - cellSpacing * 3) / 2
         let showTray = withTray >= minCell
-        let cellHeight = max(cellHeaderHeight, showTray ? withTray : (height - axisHeight - cellSpacing * 2) / 2)
-        return VStack(spacing: cellSpacing) {
-            HStack(spacing: cellSpacing) {
-                Color.clear.frame(width: labelWidth, height: axisHeight)
-                axisLabel("Срочно")
-                axisLabel("Не срочно")
+        let cellHeight = showTray ? withTray : (height - axisHeight - cellSpacing * 2) / 2
+        // Повёрнутая подпись «НЕ ВАЖНО» длиной около 64 pt: в более низкой клетке подписи налезли бы друг на друга.
+        let rowLabelsShown = cellHeight >= 70
+        if cellHeight < cellHeaderHeight {
+            compactStrip
+        } else {
+            VStack(spacing: cellSpacing) {
+                HStack(spacing: cellSpacing) {
+                    Color.clear.frame(width: labelWidth, height: axisHeight)
+                    axisLabel("Срочно")
+                    axisLabel("Не срочно")
+                }
+                .frame(height: axisHeight)
+                HStack(spacing: cellSpacing) {
+                    rowLabel("Важно")
+                        .opacity(rowLabelsShown ? 1 : 0)
+                    cell(.urgentImportant, height: cellHeight)
+                    cell(.important, height: cellHeight)
+                }
+                .frame(height: cellHeight)
+                HStack(spacing: cellSpacing) {
+                    rowLabel("Не важно")
+                        .opacity(rowLabelsShown ? 1 : 0)
+                    cell(.urgent, height: cellHeight)
+                    cell(.other, height: cellHeight)
+                }
+                .frame(height: cellHeight)
+                if showTray {
+                    unsortedTray
+                        .padding(.leading, labelWidth + cellSpacing)
+                }
             }
-            .frame(height: axisHeight)
-            HStack(spacing: cellSpacing) {
-                rowLabel("Важно")
-                cell(.urgentImportant, height: cellHeight)
-                cell(.important, height: cellHeight)
-            }
-            .frame(height: cellHeight)
-            HStack(spacing: cellSpacing) {
-                rowLabel("Не важно")
-                cell(.urgent, height: cellHeight)
-                cell(.other, height: cellHeight)
-            }
-            .frame(height: cellHeight)
-            if showTray {
-                unsortedTray
-                    .padding(.leading, labelWidth + cellSpacing)
+            .frame(height: height, alignment: .top)
+            .clipped()
+        }
+    }
+
+    /// Совсем мало места: четыре квадранта и «Не разобрано» капсулами 44 pt с числом задач, тап — список.
+    private var compactStrip: some View {
+        HStack(spacing: 6) {
+            ForEach([1, 2, 3, 4, 0], id: \.self) { raw in
+                let style = cellStyle(raw)
+                let count = items(for: raw).count
+                Button {
+                    expanded = raw
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle().fill(style.dot).frame(width: 10, height: 10)
+                        Text("\(count)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(style.text)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: Tokens.hitTarget)
+                    .background(style.background, in: Capsule())
+                    .overlay(Capsule().strokeBorder(style.border, lineWidth: 1.5))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(cellName(raw) + ", \(count)")
             }
         }
-        .frame(height: height, alignment: .top)
-        .clipped()
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private func axisLabel(_ text: String) -> some View {
@@ -346,6 +387,8 @@ struct MatrixView: View {
         }
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, alignment: .top)
+        // При сворачивании гаснущие строки не вылезают из секции на соседнюю.
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .background(style.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
     }
@@ -396,36 +439,33 @@ struct MatrixView: View {
     // MARK: - Не разобрано
 
     /// Полка серых задач без квадранта в сетке: шапка как у клеток и такие же строки, как в клетках.
-    /// Две строки видно сразу, остальное — «+N ещё» или тап по шапке.
+    /// Две строки видно сразу, остальное — «+N ещё»; тап по любому месту полки (кроме строк) — весь список.
     private var unsortedTray: some View {
         let list = unsortedTasks
         let style = QuadrantStyle.unsorted
         let visible = list.count > 2 ? Array(list.prefix(1)) : list
         let hidden = list.count - visible.count
         return VStack(spacing: 3) {
-            Button {
-                expanded = 0
-            } label: {
-                HStack(spacing: 6) {
-                    Circle().fill(style.dot).frame(width: 10, height: 10)
-                    Text("Не разобрано")
-                        .font(.system(size: 12.5, weight: .bold))
-                        .foregroundStyle(style.text)
-                    Spacer(minLength: 0)
-                    Text("\(list.count)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(Tokens.caption)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(style.text.opacity(0.6))
-                }
-                .padding(.horizontal, 10)
-                .frame(height: cellHeaderHeight)
-                .contentShape(Rectangle())
+            HStack(spacing: 6) {
+                Circle().fill(style.dot).frame(width: 10, height: 10)
+                Text("Не разобрано")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(style.text)
+                Spacer(minLength: 0)
+                Text("\(list.count)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Tokens.caption)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(style.text.opacity(0.6))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Не разобрано — показать все")
+            .padding(.horizontal, 10)
+            .frame(height: cellHeaderHeight)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Не разобрано, \(list.count) — показать все")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { expanded = 0 }
             ForEach(visible, id: \.id) { task in
                 compactRow(task, style: style)
             }
@@ -460,6 +500,8 @@ struct MatrixView: View {
         .clipped()
         .background(style.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .onTapGesture { expanded = 0 }
     }
 
     // MARK: - Полный список квадранта
@@ -528,6 +570,7 @@ struct MatrixView: View {
             .scrollContentBackground(.hidden)
         }
         .background(style.background.opacity(0.45))
+        .background(Tokens.background)
     }
 
     // MARK: - Доска для сброса

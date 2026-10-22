@@ -15,6 +15,16 @@ final class ResizeTracker {
     var grab: CGFloat = 0
 }
 
+/// Создание удержанием с протягиванием: где начали и где палец. Обычный класс — читается и из жеста,
+/// и из цикла автопрокрутки (сетка едет под неподвижным пальцем, силуэт должен расти вместе с ней).
+final class CreateTracker {
+    var day: Int?
+    /// Начало в координатах содержимого сетки.
+    var startY: CGFloat = 0
+    /// Последнее положение пальца в координатах «planner».
+    var fingerY: CGFloat = 0
+}
+
 /// Сетка 0:00–24:00 на один или три дня: строка «весь день», колонки дней, блоки задач.
 /// Тап по блоку выделяет его (второй тап — редактор), ручка снизу растягивает, удержание начинает
 /// перетаскивание; тап по свободному месту создаёт задачу, удержание с протягиванием — задачу нужной длины.
@@ -48,6 +58,9 @@ struct DayTimelineView: View {
     /// Увеличивается, когда нужно прокрутить к текущему времени (кнопка «к сегодня»).
     var scrollToNowRequest: Int = 0
     var onDragCancelled: (() -> Void)? = nil
+    /// Строка задач без времени развёрнута (иначе — одна задача и «+N»). Хранится у экрана по дням страницы:
+    /// уходящая при свайпе страница не схлопывает панель на лету, новая начинает свёрнутой.
+    @Binding var allDayExpanded: Bool
 
     @State private var liveDuration: Int?
     @State private var liveStart: Int?
@@ -62,8 +75,7 @@ struct DayTimelineView: View {
     @State private var autoScroll: Task<Void, Never>?
     @State private var autoScrollDirection = 0
     @State private var resizeTracker = ResizeTracker()
-    /// Строка задач без времени развёрнута (иначе — одна задача и «+N»).
-    @State private var allDayExpanded = false
+    @State private var createTracker = CreateTracker()
 
     private let topInset: CGFloat = 10
     private let bottomInset: CGFloat = 26
@@ -155,10 +167,6 @@ struct DayTimelineView: View {
             // Начался свайп между днями: соседняя страница встаёт на ту же прокрутку, что и средняя.
             if !live { scrollPosition.scrollTo(y: scroll.offset) }
         }
-        .onChange(of: days) { _, _ in
-            // Другой день на той же странице пейджера: панель без времени начинает свёрнутой.
-            allDayExpanded = false
-        }
         .onChange(of: allDayHidden) { _, hidden in
             // Лишние задачи без времени ушли (на сетку, в бэклог, сделаны): прятать больше нечего —
             // панель сворачивается сама, а не висит пустой без кнопки.
@@ -183,10 +191,11 @@ struct DayTimelineView: View {
         }
     }
 
-    /// Текущий час минус один — вверху видимой области.
+    /// Текущий час минус один — вверху видимой области, с тем же отступом сверху, что у «0:00»:
+    /// подпись часа целиком видна под разделителем, а не срезана пополам.
     private func scrollToNow() {
         let hour = max(0, min(23, DayMath.nowMinutes() / 60 - 1))
-        let y = min(topInset + CGFloat(hour) * Tokens.hourHeight, max(0, contentHeight - viewport.height))
+        let y = min(CGFloat(hour) * Tokens.hourHeight, max(0, contentHeight - viewport.height))
         scrollPosition.scrollTo(y: y)
     }
 
@@ -216,6 +225,9 @@ struct DayTimelineView: View {
                 scrollPosition.scrollTo(y: y)
                 scroll.offset = y
                 if resizeTracker.edge != nil { applyResize(plannerY: resizeTracker.fingerY) }
+                if let day = createTracker.day, creating != nil, !creationSuppressed {
+                    updateCreating(day: day, startY: createTracker.startY, endY: gridY(fromPlannerY: createTracker.fingerY))
+                }
                 onAutoScrollTick?()
                 try? await Task.sleep(for: .milliseconds(16))
             }
@@ -289,10 +301,17 @@ struct DayTimelineView: View {
     /// Развёрнутая панель показывается, только пока в какой-то колонке есть спрятанные задачи.
     private var allDayPanelShown: Bool { allDayExpanded && allDayHidden > 0 }
 
+    /// Строк в самой длинной колонке (без невидимых фантомов переноса).
+    private var allDayMaxRows: Int {
+        days.map { day in
+            let date = date(day)
+            return tasks.filter { $0.day == date && $0.start == nil }.count
+        }.max() ?? 1
+    }
+
     /// Высота развёрнутой панели: до пяти строк, дальше — прокрутка внутри панели, сетка не страдает.
     private var allDayExpandedHeight: CGFloat {
-        let rows = days.enumerated().map { allDay(column: $0.offset, day: $0.element).count }.max() ?? 1
-        return CGFloat(min(max(rows, 1), 5)) * (allDayChipHeight + 4) + 8
+        CGFloat(min(max(allDayMaxRows, 1), 5)) * (allDayChipHeight + 4) + 8
     }
 
     /// Строка без времени: слева одна кнопка-счётчик («+7» / число), справа колонки. Свёрнутая — 44 pt,
@@ -305,6 +324,16 @@ struct DayTimelineView: View {
                     allDayColumns
                 }
                 .frame(height: allDayExpandedHeight)
+                .overlay {
+                    // Зоны сброса развёрнутой панели — по её видимой рамке, а не по содержимому прокрутки:
+                    // не вылезают на сетку и не оставляют мёртвых мест под короткими колонками.
+                    HStack(spacing: 0) {
+                        ForEach(days, id: \.self) { day in
+                            Color.clear.reportZone("allday-\(day)", enabled: live)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
                 .background(Tokens.panel.opacity(0.75), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
                 .padding(.trailing, 8)
@@ -332,13 +361,14 @@ struct DayTimelineView: View {
                         allDayChip(task, phantom: task.day != date)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: allDayPanelShown ? 0 : Tokens.hitTarget,
+                .frame(maxWidth: .infinity,
+                       minHeight: allDayPanelShown ? CGFloat(allDayMaxRows) * (allDayChipHeight + 4) : Tokens.hitTarget,
                        alignment: allDayPanelShown ? .top : .center)
                 .padding(.horizontal, narrowColumns ? 1 : 3)
                 .padding(.vertical, allDayPanelShown ? 4 : 0)
                 .background(hovered ? Tokens.accent.opacity(0.14) : Color.clear)
                 .overlay(alignment: .leading) { Rectangle().fill(Tokens.line).frame(width: 1) }
-                .reportZone("allday-\(day)", enabled: live)
+                .reportZone("allday-\(day)", enabled: live && !allDayPanelShown)
             }
         }
     }
@@ -405,7 +435,8 @@ struct DayTimelineView: View {
         .foregroundStyle(style.text)
         .background(style.background, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style.border, lineWidth: 1))
-        .frame(height: hitHeight)
+        // Невидимый фантом переноса не занимает места: строка не вырастает посреди переноса.
+        .frame(height: phantom ? 0 : hitHeight)
         .opacity(phantom ? 0 : (drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.55 : 1)))
         .contentShape(Rectangle())
         .onTapGesture { onEdit(task) }
@@ -518,13 +549,12 @@ struct DayTimelineView: View {
                     }
                     guard !creationSuppressed else { return }
                     scroll.interacting = true
-                    let startMinutes = snappedMinutes(forY: start.y)
-                    let end = snappedMinutes(forY: location.y)
-                    let stretched = end > startMinutes ? min(end - startMinutes, ClockGrid.dayEnd - startMinutes) : 30
-                    let duration = max(15, stretched)
-                    creating = (day: day, start: ClockGrid.clampedStart(startMinutes, duration: duration), duration: duration)
+                    createTracker.day = day
+                    createTracker.startY = start.y
+                    createTracker.fingerY = location.y - scroll.offset + viewport.minY
+                    updateCreating(day: day, startY: start.y, endY: location.y)
                     if abs(location.y - start.y) > 8 {
-                        updateAutoScroll(fingerY: location.y - scroll.offset + viewport.minY)
+                        updateAutoScroll(fingerY: createTracker.fingerY)
                     }
                 }, onEnded: {
                     scroll.interacting = false
@@ -533,14 +563,29 @@ struct DayTimelineView: View {
                         onCreate(creating.day, creating.start, creating.duration)
                     }
                     creating = nil
+                    createTracker.day = nil
                     creationSuppressed = false
                 }, onCancelled: {
                     scroll.interacting = false
                     stopAutoScroll()
                     creating = nil
+                    createTracker.day = nil
                     creationSuppressed = false
                 })
             )
+    }
+
+    /// Силуэт создаваемой задачи от точки удержания до пальца (координаты содержимого сетки), шаг 15 минут;
+    /// без протягивания вниз — 30 минут.
+    private func updateCreating(day: Int, startY: CGFloat, endY: CGFloat) {
+        let startMinutes = snappedMinutes(forY: startY)
+        let end = snappedMinutes(forY: endY)
+        let stretched = end > startMinutes ? min(end - startMinutes, ClockGrid.dayEnd - startMinutes) : 30
+        let duration = max(15, stretched)
+        let next = (day: day, start: ClockGrid.clampedStart(startMinutes, duration: duration), duration: duration)
+        if creating?.day != next.day || creating?.start != next.start || creating?.duration != next.duration {
+            creating = next
+        }
     }
 
     private func block(_ task: PlannerTask, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat, phantom: Bool) -> some View {
@@ -579,10 +624,9 @@ struct DayTimelineView: View {
     }
 
     /// Ручка растягивания: нижняя двигает конец, верхняя — начало (конец на месте). Шаг 15 минут.
-    /// Зона нажатия: до 12 pt снаружи блока (но не на соседний блок — между блоками встык всего 2 pt)
-    /// и внутрь блока столько, чтобы вместе вышло 44 pt (у коротких блоков — до половины высоты),
-    /// правее кружка-галочки и не шире своей колонки. Тап без движения внутри блока открывает редактор,
-    /// снаружи — снимает выделение.
+    /// Зона нажатия 44 pt: до 24 pt внутри блока и остальное снаружи, но не на соседний блок (между блоками
+    /// встык всего 2 pt — тогда зона добирает внутрь), правее кружка-галочки и не шире своей колонки.
+    /// Тап без движения внутри блока открывает редактор, снаружи — снимает выделение.
     private func resizeHandle(_ task: PlannerTask, edge: HandleEdge, placement: LanePlacement, columnLeft: CGFloat, columnWidth: CGFloat) -> some View {
         let laneWidth = columnWidth / CGFloat(placement.laneCount)
         let width = max(0, laneWidth - 6)
@@ -593,9 +637,13 @@ struct DayTimelineView: View {
         let checkbox: CGFloat = laneWidth < 76 ? 0 : (laneWidth < 160 ? 26 : 34)
         let zoneWidth = min(88, max(min(24, laneWidth), width - checkbox))
         let zoneCenterX = left + checkbox + (width - checkbox) / 2
+        // Сначала до 24 pt внутри блока, остальное до 44 — снаружи, если там свободно; упёрлись в соседний
+        // блок — добираем внутрь (не больше половины блока: вторая половина — у другой ручки).
         let free = freeSpace(around: task, top: top, bottom: top + height)
-        let outside = max(0, min(12, (edge == .top ? free.above : free.below) - 1))
-        let inside = min(height / 2, max(24, Tokens.hitTarget - outside))
+        let gap = (edge == .top ? free.above : free.below) - 1
+        let insideBase = min(height / 2, 24)
+        let outside = max(0, min(Tokens.hitTarget - insideBase, gap))
+        let inside = min(height / 2, max(insideBase, Tokens.hitTarget - outside))
         let zoneHeight = outside + inside
         let edgeY = edge == .top ? top : top + height
         let zoneCenterY = edge == .top ? top - outside + zoneHeight / 2 : top + height + outside - zoneHeight / 2

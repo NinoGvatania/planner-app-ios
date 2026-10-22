@@ -19,6 +19,10 @@ struct VoiceInputSheet: View {
     @State private var editing: DraftTask?
     @State private var sourceNote = ""
     @FocusState private var transcriptFocused: Bool
+    /// На паузе текст правят в редакторе только после тапа по нему: до этого он стоит как стоял
+    /// (тот же кегль, та же прокрутка к концу), без прыжка.
+    @State private var editingTranscript = false
+    @State private var transcriptSelection: TextSelection?
 
     private var transcript: String {
         (committed + [recorder.liveText]).filter { !$0.isEmpty }.joined(separator: "\n")
@@ -32,7 +36,7 @@ struct VoiceInputSheet: View {
         switch recorder.status {
         case .idle: return "Подключаю микрофон…"
         case .listening: return "Слушаю…"
-        case .paused: return "Пауза — текст можно поправить"
+        case .paused: return "Пауза — нажми на текст, чтобы поправить"
         case .denied: return "Нет доступа к микрофону или распознаванию речи"
         case .unavailable: return "Распознавание речи сейчас недоступно"
         case .failed(let message): return message
@@ -121,20 +125,29 @@ struct VoiceInputSheet: View {
 
     // MARK: - Слушаем
 
+    /// Что видно в области текста: на паузе — то, что можно править, иначе — живая расшифровка.
+    private var shownTranscript: String { recorder.status == .paused ? editedTranscript : transcript }
+
     private var transcriptArea: some View {
         Group {
-            if recorder.status == .paused {
-                TextEditor(text: $editedTranscript)
+            let paused = recorder.status == .paused
+            if paused && (editingTranscript || editedTranscript.isEmpty) {
+                // Редактор с теми же кеглем, интерлиньяжем и полями, что у текста при записи:
+                // 15 + 5 (поле строки UITextView) = 20 по горизонтали, 8 + 8 (отступ контейнера) = 16 сверху.
+                TextEditor(text: $editedTranscript, selection: $transcriptSelection)
                     .focused($transcriptFocused)
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: 22, weight: .medium))
+                    .lineSpacing(4)
                     .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 12)
-            } else if isEmptyTranscript {
+                    .padding(.horizontal, 15)
+                    .padding(.top, 8)
+                    .task { transcriptFocused = editingTranscript }
+            } else if shownTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 emptyHint
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {
-                        Text(transcript)
+                        Text(shownTranscript)
                             .font(.system(size: 22, weight: .medium))
                             .lineSpacing(4)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,9 +155,16 @@ struct VoiceInputSheet: View {
                             .padding(.vertical, 16)
                         Color.clear.frame(height: 1).id("end")
                     }
-                    .onChange(of: transcript) { _, _ in
+                    .onChange(of: shownTranscript) { _, _ in
                         withAnimation { proxy.scrollTo("end", anchor: .bottom) }
                     }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Тап на паузе — править: курсор в конце текста, там, где остановились.
+                    guard paused else { return }
+                    transcriptSelection = TextSelection(insertionPoint: editedTranscript.endIndex)
+                    editingTranscript = true
                 }
             }
         }
@@ -176,6 +196,9 @@ struct VoiceInputSheet: View {
         VStack(spacing: 10) {
             Text(statusText)
                 .font(.system(size: 16, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .padding(.horizontal, 24)
             Text(recorder.status == .denied ? "Разреши в Настройках → Quick" : (recorder.isListening ? "Нажми паузу, чтобы поправить текст, или галочку, чтобы разобрать" : "Микрофон — продолжить, галочка — разобрать"))
                 .font(.system(size: 13))
                 .foregroundStyle(Tokens.caption)
@@ -241,6 +264,7 @@ struct VoiceInputSheet: View {
             committed = editedTranscript.isEmpty ? [] : [editedTranscript]
         }
         transcriptFocused = false
+        editingTranscript = false
         Task { await recorder.start() }
     }
 
@@ -248,6 +272,7 @@ struct VoiceInputSheet: View {
         let text = textToProcess
         recorder.shutdown()
         transcriptFocused = false
+        editingTranscript = false
         stage = .processing
         Task { @MainActor in
             let result = await TaskExtractor.extract(text)
@@ -338,6 +363,7 @@ struct VoiceInputSheet: View {
                 // Ещё надиктовать: текущие карточки остаются, новый текст добавится к ним.
                 committed = []
                 editedTranscript = ""
+                editingTranscript = false
                 stage = .listening
                 Task { await recorder.start() }
             } label: {

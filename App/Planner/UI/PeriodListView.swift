@@ -142,6 +142,8 @@ struct PeriodListView: View {
         }
         .padding(.horizontal, 6)
         .padding(.bottom, 4)
+        // При сворачивании гаснущие строки не вылезают из секции на соседнюю.
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .background(hovered ? Tokens.accent.opacity(0.12) : Color(hex: 0x141518), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(hovered ? Tokens.accent : Color.white.opacity(0.05), lineWidth: 1))
         // Секции лежат в ScrollView: рамки сообщаются только во время перетаскивания.
@@ -179,18 +181,23 @@ struct PeriodListView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel((task.isDone ? "Вернуть в работу: " : "Отметить выполненной: ") + task.title)
+            // Название до двух строк; место справа — только если у задачи есть проект.
             Text(task.title)
                 .font(.system(size: 15))
-                .lineLimit(1)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
                 .strikethrough(task.isDone)
-            Spacer(minLength: 4)
-            Text(task.project?.name ?? "")
-                .font(.system(size: 12))
-                .foregroundStyle(Tokens.muted)
-                .lineLimit(1)
-                .frame(maxWidth: 90, alignment: .trailing)
-                .padding(.trailing, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let project = task.project?.name {
+                Text(project)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Tokens.muted)
+                    .lineLimit(1)
+                    .frame(maxWidth: 90, alignment: .trailing)
+            }
+            Color.clear.frame(width: 6)
         }
+        .padding(.vertical, 4)
         .frame(minHeight: 46)
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .contentShape(Rectangle())

@@ -130,6 +130,8 @@ struct ProjectsView: View {
         }
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, alignment: .top)
+        // При сворачивании гаснущие строки не вылезают из секции на соседнюю.
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .background(style.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
     }

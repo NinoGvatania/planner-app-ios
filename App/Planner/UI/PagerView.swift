@@ -10,6 +10,10 @@ struct PagerView<Content: View>: View {
     var cancelWhen = false
     /// Разовый «подскок» при первом показе — намёк, что листается; по ключу один раз за запуск.
     var hintKey: String? = nil
+    /// Страница привязана к своему номеру, а не к месту в ряду: при свайпе уходящая страница переезжает
+    /// влево целиком — с прокруткой и свёрнутыми секциями, а не пересоздаётся на лету. Сетке дня и недели
+    /// нужно обратное (средняя позиция живёт, пока задачу переносят через «пружину» вкладки) — для неё `false`.
+    var keyed = false
     @ViewBuilder let content: (_ index: Int, _ live: Bool, _ syncTick: Int) -> Content
 
     @Environment(\.scenePhase) private var scenePhase
@@ -18,25 +22,39 @@ struct PagerView<Content: View>: View {
     @State private var width: CGFloat = 0
     /// Растёт в начале горизонтального свайпа: соседние страницы подравнивают прокрутку под среднюю.
     @State private var syncTick = 0
-    /// Страница ещё доезжает после прошлого свайпа или намёка: обычный класс, читается только из жеста.
+    /// Доезд страницы и начало свайпа: обычный класс, читается только из жеста.
     @State private var motion = PagerMotion()
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             HStack(spacing: 0) {
-                content(index - 1, false, syncTick)
-                    .frame(width: size.width, height: size.height)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                content(index, true, syncTick)
-                    .frame(width: size.width, height: size.height)
-                content(index + 1, false, syncTick)
-                    .frame(width: size.width, height: size.height)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                if keyed {
+                    ForEach([index - 1, index, index + 1], id: \.self) { page in
+                        content(page, page == index, syncTick)
+                            .frame(width: size.width, height: size.height, alignment: .top)
+                            .allowsHitTesting(page == index)
+                            .accessibilityHidden(page != index)
+                    }
+                } else {
+                    content(index - 1, false, syncTick)
+                        .frame(width: size.width, height: size.height, alignment: .top)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    content(index, true, syncTick)
+                        .frame(width: size.width, height: size.height, alignment: .top)
+                    content(index + 1, false, syncTick)
+                        .frame(width: size.width, height: size.height, alignment: .top)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
             }
             .offset(x: -size.width + dragX)
+            // Пока страница едет вбок, вертикальная прокрутка стоит: соседние страницы остаются на той же
+            // высоте, что и средняя, и после подмены ничего не прыгает по вертикали.
+            .scrollDisabled(axis == .horizontal)
+            // Бэклог на весь экран оставляет полосу в пару десятков точек: в ней не показывать срез страницы.
+            .opacity(size.height >= 60 ? 1 : 0)
             .onChange(of: size.width, initial: true) { _, value in width = value }
         }
         .clipped()
@@ -59,18 +77,19 @@ struct PagerView<Content: View>: View {
                     axis = horizontal && !blocked() ? .horizontal : .vertical
                     if axis == .horizontal {
                         syncTick += 1
-                        // Палец пришёл, пока страница ещё доезжала: присвоить смещение сразу — значит
-                        // оборвать анимацию и дёрнуть страницу. Такой свайп догоняет палец пружиной.
+                        // Жест замечен через 11–14 pt: страница стартует отсюда, а не прыгает к пальцу.
+                        motion.startX = value.translation.width
+                        // Палец пришёл, пока страница ещё доезжала: такой свайп догоняет палец пружиной,
+                        // чтобы страница не дёрнулась.
                         motion.catchingUp = Date() < motion.settleUntil
                     }
                 }
                 guard axis == .horizontal, !blocked() else { return }
+                let x = value.translation.width - motion.startX
                 if motion.catchingUp {
-                    withAnimation(.interactiveSpring(response: 0.16, dampingFraction: 0.9)) {
-                        dragX = value.translation.width
-                    }
+                    withAnimation(.interactiveSpring(response: 0.12, dampingFraction: 0.9)) { dragX = x }
                 } else {
-                    dragX = value.translation.width
+                    dragX = x
                 }
             }
             .onEnded { value in
@@ -81,6 +100,7 @@ struct PagerView<Content: View>: View {
                     settleBack()
                     return
                 }
+                // Пороги — по настоящему ходу пальца.
                 let projected = value.predictedEndTranslation.width
                 if abs(value.translation.width) > width * 0.2 || abs(projected) > width * 0.45 {
                     let direction = value.translation.width < 0 ? 1 : -1
@@ -126,11 +146,13 @@ struct PagerView<Content: View>: View {
     }
 }
 
-/// Доезд страницы после свайпа: до какого момента он идёт и догоняет ли текущий свайп палец пружиной.
-/// Обычный класс, не Observable: читается только из жеста, перерисовки не нужны.
+/// Доезд страницы после свайпа и начало текущего свайпа. Обычный класс, не Observable: читается только
+/// из жеста, перерисовки не нужны.
 final class PagerMotion {
     var settleUntil = Date.distantPast
     var catchingUp = false
+    /// Ход пальца в момент, когда свайп признан горизонтальным.
+    var startX: CGFloat = 0
 }
 
 /// Намёк на свайп показывается один раз за запуск на каждый ключ.

@@ -58,6 +58,8 @@ enum Display: String, CaseIterable, Identifiable {
 struct HeaderView: View {
     let title: String
     let subtitle: String
+    /// Подзаголовок покороче — для узких экранов, чтобы текст не мельчал ниже 11 pt.
+    let shortSubtitle: String
     let streak: Int
     let todayNumber: Int
     @Binding var period: Period
@@ -91,11 +93,15 @@ struct HeaderView: View {
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Tokens.caption)
                     }
-                    Text(subtitle)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Tokens.caption)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                    ViewThatFits(in: .horizontal) {
+                        Text(subtitle)
+                            .lineLimit(1)
+                        Text(shortSubtitle)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.88)
+                    }
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Tokens.caption)
                 }
                 .frame(maxWidth: .infinity, minHeight: Tokens.hitTarget, alignment: .leading)
                 .contentShape(Rectangle())

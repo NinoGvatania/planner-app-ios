@@ -21,76 +21,83 @@ struct OverdueSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.clear.frame(height: 10)
-            HStack(spacing: 8) {
+            // Шапка и панель «Перенести» — в одном обрезанном блоке: панель выезжает из‑под шапки,
+            // список под ней съезжает вниз с той же скоростью, ничего не накрывает друг друга.
+            VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("Просрочено")
-                        .font(.system(size: 17, weight: .bold))
-                    Text("\(tasks.filter { !$0.isDone }.count)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0xC9C9D1))
-                        .frame(minWidth: 22, minHeight: 22)
-                        .padding(.horizontal, 3)
-                        .background(Tokens.badge, in: Capsule())
-                }
-                Spacer()
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) { moveOpen.toggle() }
-                } label: {
-                    Text("Перенести")
-                        .font(.system(size: 15, weight: .bold))
-                        .padding(.horizontal, 14)
-                        .frame(height: 36)
-                        .background(moveOpen ? Color(hex: 0xA93832) : Color(hex: 0xC8433C), in: Capsule())
-                        .foregroundStyle(.white)
-                        .frame(minHeight: Tokens.hitTarget)
-                        .contentShape(Rectangle())
-                }
-                .disabled(tasks.isEmpty)
-            }
-            .padding(.leading, 18)
-            .padding(.trailing, 14)
-            .padding(.top, 8)
-            .padding(.bottom, 10)
-
-            if moveOpen {
-                VStack(spacing: 8) {
-                    Button(action: onFitToday) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("На сегодня — в свободные окна")
-                                .font(.system(size: 15, weight: .bold))
-                            Text(fromLabel)
-                                .font(.system(size: 12))
-                                .opacity(0.8)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 54)
-                        .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(Tokens.onAccent)
-                    }
                     HStack(spacing: 8) {
-                        Button(action: onFitTomorrow) {
-                            Text("На завтра")
-                                .font(.system(size: 15, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: Tokens.hitTarget)
-                                .background(Color(hex: 0x2F3036), in: RoundedRectangle(cornerRadius: 12))
+                        Text("Просрочено")
+                            .font(.system(size: 17, weight: .bold))
+                        Text("\(tasks.filter { !$0.isDone }.count)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(hex: 0xC9C9D1))
+                            .frame(minWidth: 22, minHeight: 22)
+                            .padding(.horizontal, 3)
+                            .background(Tokens.badge, in: Capsule())
+                    }
+                    Spacer()
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { moveOpen.toggle() }
+                    } label: {
+                        Text("Перенести")
+                            .font(.system(size: 15, weight: .bold))
+                            .padding(.horizontal, 14)
+                            .frame(height: 36)
+                            .background(moveOpen ? Color(hex: 0xA93832) : Color(hex: 0xC8433C), in: Capsule())
+                            .foregroundStyle(.white)
+                            .frame(minHeight: Tokens.hitTarget)
+                            .contentShape(Rectangle())
+                    }
+                    .disabled(tasks.isEmpty)
+                }
+                .padding(.leading, 18)
+                .padding(.trailing, 14)
+                .padding(.top, 18)
+                .padding(.bottom, 10)
+                .background(Tokens.panel)
+                .zIndex(1)
+
+                if moveOpen {
+                    VStack(spacing: 8) {
+                        Button(action: onFitToday) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("На сегодня — в свободные окна")
+                                    .font(.system(size: 15, weight: .bold))
+                                Text(fromLabel)
+                                    .font(.system(size: 12))
+                                    .opacity(0.8)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 54)
+                            .background(Tokens.accent, in: RoundedRectangle(cornerRadius: 14))
+                            .foregroundStyle(Tokens.onAccent)
                         }
-                        Button(action: onToBacklog) {
-                            Text("В бэклог")
-                                .font(.system(size: 15, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: Tokens.hitTarget)
-                                .background(Color(hex: 0x2F3036), in: RoundedRectangle(cornerRadius: 12))
+                        HStack(spacing: 8) {
+                            Button(action: onFitTomorrow) {
+                                Text("На завтра")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: Tokens.hitTarget)
+                                    .background(Color(hex: 0x2F3036), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            Button(action: onToBacklog) {
+                                Text("В бэклог")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: Tokens.hitTarget)
+                                    .background(Color(hex: 0x2F3036), in: RoundedRectangle(cornerRadius: 12))
+                            }
                         }
                     }
+                    .padding(12)
+                    .background(Tokens.field, in: RoundedRectangle(cornerRadius: 18))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                .padding(12)
-                .background(Tokens.field, in: RoundedRectangle(cornerRadius: 18))
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
             }
+            .clipped()
 
             List {
                 ForEach(tasks, id: \.id) { task in
