@@ -103,22 +103,23 @@ struct HeaderView: View {
             .layoutPriority(1)
             .accessibilityLabel("Период: \(period.title). Выбрать другой")
 
-            Button(action: onStreak) {
-                HStack(spacing: 3) {
-                    Image(systemName: streak > 0 ? "flame.fill" : "flame")
-                        .font(.system(size: 13, weight: .bold))
-                    Text("\(streak)")
-                        .font(.system(size: 13, weight: .bold))
-                        .monospacedDigit()
-                }
-                .padding(.horizontal, 10)
-                .frame(height: Tokens.hitTarget)
-                .glassEffect(.regular.tint(Tokens.cluster.opacity(0.6)).interactive(), in: Capsule())
-                .foregroundStyle(streak > 0 ? flame : Tokens.muted)
-            }
-            .accessibilityLabel("Серия: \(streak) дней подряд")
-
+            // Одна капсула на всё: серия, режим, «…», «сегодня» — ничего не висит отдельно.
             HStack(spacing: 0) {
+                Button(action: onStreak) {
+                    HStack(spacing: 2) {
+                        Image(systemName: streak > 0 ? "flame.fill" : "flame")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("\(streak)")
+                            .font(.system(size: 13, weight: .bold))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(streak > 0 ? flame : Tokens.muted)
+                    .frame(minWidth: Tokens.hitTarget, minHeight: Tokens.hitTarget)
+                    .padding(.horizontal, 2)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Серия: \(streak) дней подряд")
+
                 Menu {
                     Picker("Вид", selection: $display) {
                         ForEach(Display.allCases) { item in

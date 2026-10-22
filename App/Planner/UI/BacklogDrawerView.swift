@@ -116,10 +116,12 @@ struct BacklogDrawerView: View {
     // MARK: - Заголовок
 
     private var header: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             Capsule()
                 .fill(Color(hex: 0x3A3B41))
                 .frame(width: 38, height: 5)
+                .padding(.top, 6)
+                .padding(.bottom, 5)
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
                     Text("Бэклог")
@@ -161,17 +163,17 @@ struct BacklogDrawerView: View {
                         .padding(.trailing, 5)
                         .frame(height: 32)
                         .background(Tokens.overdueChip, in: Capsule())
-                        .frame(minHeight: Tokens.hitTarget)
+                        .frame(height: Tokens.hitTarget)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Просрочено: \(overdueCount)")
                 }
             }
+            .frame(height: Tokens.hitTarget)
         }
         .padding(.horizontal, 18)
-        .padding(.top, 7)
-        .frame(height: 52, alignment: .top)
+        .frame(height: Tokens.drawerHeader, alignment: .top)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .foregroundStyle(Tokens.text)
@@ -268,9 +270,8 @@ struct BacklogDrawerView: View {
     // MARK: - Ввод
 
     private var inputRow: some View {
-        // Жидкое стекло: строка ввода и круглая кнопка — в одном контейнере, чтобы стекло сливалось.
-        GlassEffectContainer(spacing: 8) {
-        HStack(alignment: .top, spacing: 8) {
+        // Строка ввода и круглая кнопка — отдельные стеклянные фигуры (без контейнера: он склеивал бы их).
+        HStack(alignment: .top, spacing: 10) {
             TextField("Завтра в 10 созвон, важно", text: $input)
                 .font(.system(size: 15))
                 .foregroundStyle(Tokens.text)
@@ -300,7 +301,6 @@ struct BacklogDrawerView: View {
                 }
                 .accessibilityLabel("Добавить задачу")
             }
-        }
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
