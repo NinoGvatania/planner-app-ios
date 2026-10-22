@@ -19,14 +19,15 @@ enum TaskExtractor {
     }
 
     /// Разобрать текст. Возвращает задачи и чем разбирали.
-    static func extract(_ transcript: String) async -> (drafts: [DraftTask], source: Source) {
+    /// `vocabulary` — проекты и прежние задачи пользователя: по ним модель правит искажённые названия.
+    static func extract(_ transcript: String, vocabulary: [String] = []) async -> (drafts: [DraftTask], source: Source) {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return ([], .rules(reason: nil)) }
         var reasons: [String] = []
         if ClaudeSettings.isEnabled {
             let model = ClaudeSettings.model
             do {
-                let drafts = dedupe(try await ClaudeExtractor.extract(text, apiKey: ClaudeSettings.apiKey, model: model))
+                let drafts = dedupe(try await ClaudeExtractor.extract(text, apiKey: ClaudeSettings.apiKey, model: model, vocabulary: vocabulary))
                 if !drafts.isEmpty { return (drafts, .claude(model: model)) }
                 reasons.append("Claude не нашёл задач")
             } catch {

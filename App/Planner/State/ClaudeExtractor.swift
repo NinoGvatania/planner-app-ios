@@ -84,7 +84,14 @@ enum ClaudeExtractor {
     ]
 
     /// Инструкция с сегодняшней датой и ближайшими днями недели — чтобы «в пятницу» превращалось в точную дату.
-    static func systemPrompt(today: Date) -> String {
+    /// Слова пользователя для промпта: так он сам пишет свои названия, имена и сокращения.
+    private static func vocabularyLine(_ words: [String]) -> String {
+        guard !words.isEmpty else { return "" }
+        return "\nСлова пользователя (его проекты и прежние задачи — так он пишет свои названия и имена): "
+            + words.joined(separator: "; ") + "."
+    }
+
+    static func systemPrompt(today: Date, vocabulary: [String] = []) -> String {
         let calendar = DayMath.calendar
         let long = DateFormatter()
         long.locale = Locale(identifier: "ru_RU")
@@ -115,13 +122,18 @@ enum ClaudeExtractor {
 
         Сегодня \(long.string(from: today)) (\(iso.string(from: today))). Ближайшие дни: \(nextDays). \
         Неделя начинается с понедельника.
+        \(vocabularyLine(vocabulary))
 
         Как работать:
         1. Сначала прочитай весь текст целиком и пойми контекст: о каких делах, днях, людях и местах идёт речь.
-        2. Исправь явные ошибки распознавания — только когда слово в контексте бессмысленно, а верное очевидно \
-        (созвучное слово, склеенные или разорванные слова). Числа, суммы, время, номера телефонов, адреса, \
-        а также имена и названия, которые звучат правдоподобно, оставляй как распознаны: не подменяй \
-        незнакомое имя или название похожим известным.
+        2. Исправь ошибки распознавания. Распознавание не знает редких слов, названий и имён и подставляет \
+        вместо них похожие по звучанию обычные слова или искажённое написание, а ещё склеивает и разрывает \
+        слова. Если слово выбивается из смысла фразы, восстанови то, что человек скорее всего сказал, \
+        по звучанию и контексту. Если похожее по звучанию слово есть среди слов пользователя (ниже), \
+        бери его написание: «тендог» при слове пользователя «Тендок» → «Тендок». Незнакомое название или имя, \
+        которого среди них нет, оставь как распознано (название — с заглавной буквы), не заменяй его другим \
+        известным словом. Числа, суммы, время, номера телефонов и адреса не меняй. Смысл сказанного не меняй \
+        никогда: не уверен — оставь как есть.
         3. Раздели на задачи: одна задача — одно самостоятельное действие, которое можно отметить сделанным.
         - Одно действие не дроби. Однотипные покупки за один поход — одна задача с обобщающим названием \
         («Купить продукты», «Купить канцтовары»), сам перечень — в note; покупка другого рода или в другом \
@@ -170,7 +182,7 @@ enum ClaudeExtractor {
     }
 
     /// Разобрать текст. Бросает `ExtractError` или `URLError`.
-    static func extract(_ transcript: String, apiKey: String, model: String) async throws -> [DraftTask] {
+    static func extract(_ transcript: String, apiKey: String, model: String, vocabulary: [String] = []) async throws -> [DraftTask] {
         guard !apiKey.isEmpty else { throw ExtractError.noKey }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -182,7 +194,7 @@ enum ClaudeExtractor {
         let body: [String: Any] = [
             "model": model,
             "max_tokens": 16000,
-            "system": systemPrompt(today: Date()),
+            "system": systemPrompt(today: Date(), vocabulary: vocabulary),
             "messages": [["role": "user", "content": "Расшифровка:\n\(transcript)"]],
             // Средняя глубина размышлений: на контекст и смысл хватает, а ждать и платить меньше.
             "output_config": ["effort": "medium", "format": ["type": "json_schema", "schema": schema]],

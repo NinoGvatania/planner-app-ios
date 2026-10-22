@@ -61,6 +61,13 @@ struct PlannerScreen: View {
         tasks.filter { $0.isOverdue(today: today) || recentlyDoneOverdue.contains($0.id) }
             .sorted { ($0.day ?? today, $0.start ?? 0) < ($1.day ?? today, $1.start ?? 0) }
     }
+    /// Слова пользователя для разбора диктовки: проекты и названия последних задач (до 150), без повторов.
+    private var voiceVocabulary: [String] {
+        var seen = Set<String>()
+        let projectNames = ((try? context.fetch(FetchDescriptor<Project>())) ?? []).map(\.name)
+        let titles = tasks.reversed().map(\.title)
+        return (projectNames + titles).filter { seen.insert($0.lowercased()).inserted }.prefix(150).map { $0 }
+    }
     private var backlogTasks: [PlannerTask] {
         tasks.filter { $0.isInBacklog && (!$0.isDone || showDone) }
             .sorted { a, b in
@@ -313,7 +320,7 @@ struct PlannerScreen: View {
         .onChange(of: period) { _, _ in resetInteraction() }
         .onChange(of: display) { _, _ in resetInteraction() }
         .fullScreenCover(isPresented: $showVoice) {
-            VoiceInputSheet(onDone: addDrafts)
+            VoiceInputSheet(onDone: addDrafts, vocabulary: voiceVocabulary)
         }
         .sheet(isPresented: $showProjects) {
             ProjectsSheet()

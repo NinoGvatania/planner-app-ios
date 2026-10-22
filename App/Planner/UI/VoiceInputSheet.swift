@@ -6,6 +6,8 @@ import SwiftUI
 /// поправить и сохранить.
 struct VoiceInputSheet: View {
     let onDone: ([DraftTask]) -> Void
+    /// Проекты и прежние задачи пользователя — подсказка для разбора искажённых названий.
+    var vocabulary: [String] = []
     @Environment(\.dismiss) private var dismiss
     @State private var recorder = SpeechRecorder()
 
@@ -280,7 +282,7 @@ struct VoiceInputSheet: View {
         editingTranscript = false
         stage = .processing
         Task { @MainActor in
-            let result = await TaskExtractor.extract(text)
+            let result = await TaskExtractor.extract(text, vocabulary: vocabulary)
             // «Надиктовать ещё» добавляет к уже разобранным карточкам, а не заменяет их.
             drafts.append(contentsOf: result.drafts)
             switch result.source {
