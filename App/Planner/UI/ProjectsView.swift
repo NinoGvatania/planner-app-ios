@@ -181,7 +181,7 @@ struct ProjectsView: View {
         .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.6 : 1))
         .contentShape(Rectangle())
-        .onTapGesture { onEdit(task) }
+        .onPageTap { onEdit(task) }
         .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 

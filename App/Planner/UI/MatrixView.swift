@@ -297,7 +297,7 @@ struct MatrixView: View {
         .background(style.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
         .contentShape(RoundedRectangle(cornerRadius: 16))
-        .onTapGesture { expanded = quadrant.rawValue }
+        .onPageTap { expanded = quadrant.rawValue }
         .accessibilityLabel(quadrant.name)
         .accessibilityAddTraits(.isButton)
     }
@@ -333,7 +333,7 @@ struct MatrixView: View {
         .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 10))
         .opacity(drag?.taskID == task.id ? 0.35 : 1)
         .contentShape(Rectangle())
-        .onTapGesture { onEdit(task) }
+        .onPageTap { onEdit(task) }
         .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 
@@ -430,7 +430,7 @@ struct MatrixView: View {
         .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
         .opacity(drag?.taskID == task.id ? 0.35 : 1)
         .contentShape(Rectangle())
-        .onTapGesture { onEdit(task) }
+        .onPageTap { onEdit(task) }
         .gesture(HoldDragGesture(windowOrigin: { plannerOrigin.point }, onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 
@@ -507,7 +507,7 @@ struct MatrixView: View {
         .background(style.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(style.border, lineWidth: 1.5))
         .contentShape(RoundedRectangle(cornerRadius: 16))
-        .onTapGesture { expanded = 0 }
+        .onPageTap { expanded = 0 }
     }
 
     // MARK: - Полный список квадранта

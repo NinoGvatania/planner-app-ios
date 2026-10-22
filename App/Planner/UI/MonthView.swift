@@ -160,8 +160,8 @@ struct MonthView: View {
         .background(hovered ? Tokens.accent.opacity(0.16) : (inMonth ? Color.clear : Color.white.opacity(0.015)))
         .overlay(alignment: .trailing) { Rectangle().fill(Tokens.line.opacity(0.6)).frame(width: 1) }
         .contentShape(Rectangle())
-        .onTapGesture { onSelectDay(offset) }
-        .reportZone("tab-\(offset)", enabled: live)
+        .onPageTap { onSelectDay(offset) }
+        .reportZone("tab-\(offset)", enabled: live && drag != nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(DayMath.accessibilityLabel(offset: offset) + ", задач: \(tasks.count)")
         .accessibilityHint("Удержание создаёт задачу")
@@ -198,7 +198,7 @@ struct MonthView: View {
             // Фишка 17 pt, зона нажатия 21 pt: промах по высоте не создаёт новую задачу.
             .padding(.vertical, 2)
             .contentShape(Rectangle())
-            .onTapGesture { onEdit(task) }
+            .onPageTap { onEdit(task) }
             .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 }

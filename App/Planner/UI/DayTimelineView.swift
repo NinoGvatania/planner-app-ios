@@ -268,8 +268,8 @@ struct DayTimelineView: View {
                 .frame(height: 48)
                 .background(hovered ? Tokens.accent.opacity(0.22) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
-                .onTapGesture { onSelectDay?(offset) }
-                .reportZone("tab-\(offset)", enabled: live)
+                .onPageTap { onSelectDay?(offset) }
+                .reportZone("tab-\(offset)", enabled: live && drag != nil)
                 .accessibilityLabel(DayMath.accessibilityLabel(offset: offset))
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Открыть день")
@@ -444,7 +444,7 @@ struct DayTimelineView: View {
         .frame(height: phantom ? 0 : hitHeight)
         .opacity(phantom ? 0 : (drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.55 : 1)))
         .contentShape(Rectangle())
-        .onTapGesture { onEdit(task) }
+        .onPageTap { onEdit(task) }
         .gesture(dragGesture(for: task))
     }
 
@@ -542,7 +542,7 @@ struct DayTimelineView: View {
     private func columnBackground(day: Int) -> some View {
         Color.clear
             .contentShape(Rectangle())
-            .onTapGesture {
+            .onPageTap {
                 selectedID = nil
                 liveDuration = nil
                 liveStart = nil
@@ -616,7 +616,7 @@ struct DayTimelineView: View {
         .frame(width: width, height: height)
         .opacity(phantom ? 0 : 1)
         .position(x: left + width / 2, y: top + height / 2)
-        .onTapGesture {
+        .onPageTap {
             if selectedID == task.id {
                 onEdit(task)
             } else {

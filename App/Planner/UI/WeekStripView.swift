@@ -11,6 +11,9 @@ struct WeekStripView: View {
     /// Вкладка, над которой сейчас держат перетаскиваемую задачу.
     var hoveredOffset: Int? = nil
     var blocked: () -> Bool = { false }
+    /// Задачу сейчас тянут: только тогда вкладки сообщают зоны сброса. Иначе рамки вкладок менялись бы
+    /// с каждым движением пальца по полоске и перерисовывали весь экран.
+    var dragging = false
 
     @Namespace private var glass
     /// Выделенный день на экране. Отдельно от `dayOffset`: тап двигает выделение пружиной, а сетку дня
@@ -46,12 +49,16 @@ struct WeekStripView: View {
     }
 
     private func select(_ offset: Int) {
-        guard offset != dayOffset else { return }
+        // Нажимается только видимая неделя — неделя выбранного дня. День другой недели — запоздалый тап
+        // со страницы, которую только что пролистали: он вернул бы полоску назад.
+        guard offset != dayOffset,
+              DayMath.weekStartOffset(containing: offset) == DayMath.weekStartOffset(containing: dayOffset) else { return }
         withAnimation(.spring(duration: 0.4, bounce: 0.22)) { shownDay = offset }
         dayOffset = offset
     }
 
-    /// Одна страница недели. Зоны сброса сообщает только видимая (`live`), чтобы соседние не спорили.
+    /// Одна страница недели. Зоны сброса сообщает только видимая (`live`), чтобы соседние не спорили,
+    /// и только пока тянут задачу.
     private func week(_ first: Int, live: Bool) -> some View {
         GlassEffectContainer(spacing: 12) {
             HStack(spacing: 4) {
@@ -93,8 +100,8 @@ struct WeekStripView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { select(offset) }
-        .reportZone("tab-\(offset)", enabled: live)
+        .onPageTap { select(offset) }
+        .reportZone("tab-\(offset)", enabled: live && dragging)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(DayMath.accessibilityLabel(offset: offset))
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : [.isButton])

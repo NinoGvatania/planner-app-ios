@@ -54,6 +54,8 @@ struct PagerView<Content: View>: View {
                 }
             }
             .offset(x: -size.width + dragX)
+            // Тапы страниц спрашивают, не хвост ли это свайпа (`onPageTap`).
+            .environment(\.pagerMotion, motion)
             // Пока страница едет вбок, вертикальная прокрутка стоит: соседние страницы остаются на той же
             // высоте, что и средняя, и после подмены ничего не прыгает по вертикали.
             .scrollDisabled(axis == .horizontal)
@@ -80,6 +82,7 @@ struct PagerView<Content: View>: View {
                     axis = horizontal && !blocked() ? .horizontal : .vertical
                     if axis == .horizontal {
                         syncTick += 1
+                        motion.swiping = true
                         // Жест замечен через 11–14 pt: страница стартует отсюда, а не прыгает к пальцу.
                         motion.startX = value.translation.width
                         // Палец пришёл, пока страница ещё доезжала: такой свайп догоняет палец пружиной,
@@ -88,6 +91,7 @@ struct PagerView<Content: View>: View {
                     }
                 }
                 guard axis == .horizontal, !blocked() else { return }
+                motion.lastSwipe = Date()
                 let x = value.translation.width - motion.startX
                 if motion.catchingUp {
                     withAnimation(.interactiveSpring(response: 0.12, dampingFraction: 0.9)) { dragX = x }
@@ -99,6 +103,8 @@ struct PagerView<Content: View>: View {
                 let wasHorizontal = axis == .horizontal
                 axis = nil
                 motion.catchingUp = false
+                motion.swiping = false
+                if wasHorizontal { motion.lastSwipe = Date() }
                 guard wasHorizontal, width > 0, !blocked() else {
                     settleBack()
                     return
@@ -128,6 +134,7 @@ struct PagerView<Content: View>: View {
     private func settleBack() {
         axis = nil
         motion.catchingUp = false
+        motion.swiping = false
         guard dragX != 0 else { return }
         motion.settleUntil = Date().addingTimeInterval(0.2)
         withAnimation(.easeOut(duration: 0.2)) { dragX = 0 }
@@ -156,6 +163,50 @@ final class PagerMotion {
     var catchingUp = false
     /// Ход пальца в момент, когда свайп признан горизонтальным.
     var startX: CGFloat = 0
+    /// Идёт горизонтальный свайп и когда палец последний раз двигал страницу (или отпустил её).
+    var swiping = false
+    var lastSwipe = Date.distantPast
+
+    /// Тап сейчас — хвост свайпа. Тап в SwiftUI срывается только после ~45 pt хода пальца, а страница
+    /// листается уже от короткого броска в 14–45 pt: без этой проверки отпущенный палец ещё и «нажимал»
+    /// то, с чего начали листать (день полоски возвращал неделю назад, галочка отмечала задачу).
+    /// Палец может замереть посреди свайпа — тогда признак держится, пока свайп не кончится, но не вечно:
+    /// если конец жеста потерялся, тапы вернутся через 5 секунд.
+    var swallowsTap: Bool {
+        let since = Date().timeIntervalSince(lastSwipe)
+        return since < 0.3 || (swiping && since < 5)
+    }
+}
+
+private struct PagerMotionKey: EnvironmentKey {
+    static var defaultValue: PagerMotion? { nil }
+}
+
+extension EnvironmentValues {
+    /// Пейджер, внутри страницы которого лежит вид; `nil` — вне пейджера.
+    var pagerMotion: PagerMotion? {
+        get { self[PagerMotionKey.self] }
+        set { self[PagerMotionKey.self] = newValue }
+    }
+}
+
+/// Тап по листаемой странице: не срабатывает, если палец только что листал страницу.
+private struct PageTap: ViewModifier {
+    let action: () -> Void
+    @Environment(\.pagerMotion) private var pager
+
+    func body(content: Content) -> some View {
+        content.onTapGesture {
+            if pager?.swallowsTap != true { action() }
+        }
+    }
+}
+
+extension View {
+    /// Как `onTapGesture`, но внутри страницы пейджера тап, которым закончился свайп, не считается.
+    func onPageTap(perform action: @escaping () -> Void) -> some View {
+        modifier(PageTap(action: action))
+    }
 }
 
 /// Намёк на свайп показывается один раз за запуск на каждый ключ.

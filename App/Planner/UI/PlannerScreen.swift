@@ -236,7 +236,7 @@ struct PlannerScreen: View {
                 WeekStripView(dayOffset: $dayOffset, hasTasks: { offset in
                     let date = DayMath.day(offset: offset)
                     return visibleTasks.contains { $0.day == date }
-                }, hoveredOffset: hoveredTab, blocked: { drag != nil })
+                }, hoveredOffset: hoveredTab, blocked: { drag != nil }, dragging: drag != nil)
             }
 
             // Все виды листаются одинаково: соседние периоды отрисованы рядом, страница едет за пальцем.

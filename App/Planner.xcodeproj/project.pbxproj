@@ -354,7 +354,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Planner/Planner.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";
@@ -386,7 +386,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Planner/Planner.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";
@@ -416,7 +416,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = QuickWidget/QuickWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "QuickWidget-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";
@@ -441,7 +441,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = QuickWidget/QuickWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "QuickWidget-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";

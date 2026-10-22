@@ -201,7 +201,7 @@ struct PeriodListView: View {
         .frame(minHeight: 46)
         .opacity(drag?.taskID == task.id ? 0.35 : (task.isDone ? 0.5 : 1))
         .contentShape(Rectangle())
-        .onTapGesture { onEdit(task) }
+        .onPageTap { onEdit(task) }
         .gesture(HoldDragGesture(onChanged: { location, start in onDragChanged(task, location, start) }, onEnded: onDragEnded, onCancelled: onDragCancelled ?? onDragEnded))
     }
 }

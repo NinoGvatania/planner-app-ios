@@ -4,7 +4,7 @@ import SwiftUI
 /// Обычная кнопка срабатывает, если палец отпустили над ней. А страница при свайпе едет вместе с пальцем,
 /// поэтому кнопка, с которой начали свайп, «нажималась» сама: день в полоске недели возвращал выбор
 /// туда, где коснулись, галочка отмечала задачу сделанной, секция сворачивалась. Жест тапа после
-/// протягивания пальца не срабатывает — так же, как у клеток месяца.
+/// протягивания пальца не срабатывает, а короткий бросок, который тап ещё пропускает, отсекает `onPageTap`.
 struct PageTapButtonStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         PageTapButton(configuration: configuration)
@@ -19,7 +19,7 @@ private struct PageTapButton: View {
     var body: some View {
         configuration.label
             .contentShape(Rectangle())
-            .onTapGesture {
+            .onPageTap {
                 if isEnabled { configuration.trigger() }
             }
     }

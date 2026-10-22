@@ -74,7 +74,7 @@ struct YearView: View {
         .background(Tokens.panel, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isCurrent ? Tokens.accent.opacity(0.5) : Color.white.opacity(0.06), lineWidth: 1))
         .contentShape(RoundedRectangle(cornerRadius: 14))
-        .onTapGesture { onSelectMonth(start) }
+        .onPageTap { onSelectMonth(start) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(DayMath.monthNominative[month] + " \(year)")
         .accessibilityAddTraits(.isButton)
