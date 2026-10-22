@@ -61,6 +61,8 @@ struct DayTimelineView: View {
     /// Строка задач без времени развёрнута (иначе — одна задача и «+N»). Хранится у экрана по дням страницы:
     /// уходящая при свайпе страница не схлопывает панель на лету, новая начинает свёрнутой.
     @Binding var allDayExpanded: Bool
+    /// Сколько снизу закрывает свёрнутый остров: сетка прокручивается под ним, у края переноса — его верх.
+    var bottomInset: CGFloat = 0
 
     @State private var liveDuration: Int?
     @State private var liveStart: Int?
@@ -143,6 +145,7 @@ struct DayTimelineView: View {
                     grid(areaWidth: areaWidth)
                 }
                 .scrollPosition($scrollPosition)
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
                     if live { scroll.offset = offset }
                 }
@@ -201,7 +204,7 @@ struct DayTimelineView: View {
     /// подпись часа целиком видна под разделителем, а не срезана пополам.
     private func scrollToNow() {
         let hour = max(0, min(23, DayMath.nowMinutes() / 60 - 1))
-        let y = min(CGFloat(hour) * Tokens.hourHeight, max(0, contentHeight - viewport.height))
+        let y = min(CGFloat(hour) * Tokens.hourHeight, max(0, contentHeight + bottomInset - viewport.height))
         scrollPosition.scrollTo(y: y)
     }
 
@@ -209,10 +212,12 @@ struct DayTimelineView: View {
     private func updateAutoScroll(fingerY: CGFloat) {
         let edge: CGFloat = 52
         var direction = 0
-        if viewport.height > 0, fingerY >= viewport.minY, fingerY <= viewport.maxY {
+        // Низ видимой сетки — верх острова: ниже палец уже над бэклогом.
+        let visibleBottom = viewport.maxY - bottomInset
+        if viewport.height > 0, fingerY >= viewport.minY, fingerY <= visibleBottom {
             if fingerY < viewport.minY + edge {
                 direction = -1
-            } else if fingerY > viewport.maxY - edge {
+            } else if fingerY > visibleBottom - edge {
                 direction = 1
             }
         }
@@ -224,7 +229,7 @@ struct DayTimelineView: View {
         autoScroll = Task { @MainActor in
             var y = scroll.offset
             while !Task.isCancelled {
-                let limit = max(0, contentHeight - viewport.height)
+                let limit = max(0, contentHeight + bottomInset - viewport.height)
                 let next = max(0, min(limit, y + CGFloat(direction) * 12))
                 if next == y { break }
                 y = next

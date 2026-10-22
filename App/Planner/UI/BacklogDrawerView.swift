@@ -2,14 +2,15 @@ import PlannerCore
 import SwiftUI
 import UIKit
 
-/// Панель бэклога снизу. Три положения: свёрнута (только заголовок с счётчиком и «Просрочено» плюс
-/// строка ввода — ничего не торчит), открыта (до 6 строк) и на весь экран. Тап по заголовку
-/// открывает и сворачивает; свайп тянет за пальцем и отпускает к ближайшему положению.
+/// Нижний «остров» как поле ввода в Claude: висит над календарём, полупрозрачный, опущен к краю экрана.
+/// Две строки: сверху «Бэклог · N» и «Просрочено · N», снизу строка ввода с микрофоном. Тап по строке
+/// бэклога (или свайп вверх) раскрывает остров на всю ширину и не выше половины экрана — календарь под ним
+/// не сжимается. Строка бэклога всегда на месте: на неё бросают задачи, чтобы убрать их в бэклог.
 /// Строки: тап — редактор, удержание — перенос, свайп влево — удалить.
 /// Жест удержания висит на каждой строке: задачу знает сам жест, без поиска строки по рамкам
 /// (рамки ячеек List устаревают — новая строка или сдвиг панели при закрытии клавиатуры, и перенос
-/// не начинался). Чтобы строку не уничтожило, когда панель сворачивается в начале переноса,
-/// список на время переноса сохраняет свою высоту и только обрезается панелью.
+/// не начинался). Чтобы строку не уничтожило, когда остров сворачивается в начале переноса,
+/// список на время переноса сохраняет свою высоту и только обрезается островом.
 struct BacklogDrawerView: View {
     let tasks: [PlannerTask]
     @Binding var isOpen: Bool
@@ -22,25 +23,27 @@ struct BacklogDrawerView: View {
     let onDragEnded: () -> Void
     let onEdit: (PlannerTask) -> Void
     let onDelete: (PlannerTask) -> Void
-    /// Сколько высоты экрана панель может занять (с клавиатурой — меньше).
+    /// Сколько высоты остров может занять, без отступа снизу (половина экрана, с клавиатурой — меньше).
     var maxHeight: CGFloat = .infinity
+    /// Отступ под строкой ввода у раскрытого острова (он доходит до края экрана) — над полоской «домой».
+    var bottomPadding: CGFloat = 0
+    /// Зазор под свёрнутым островом до края экрана.
+    var floatingGap: CGFloat = 0
     var onDragCancelled: (() -> Void)? = nil
-    /// «Просрочено · N» в заголовке панели; тап открывает лист просроченных.
+    /// «Просрочено · N» в строке бэклога; тап открывает лист просроченных.
     var overdueCount: Int = 0
     var onOverdue: (() -> Void)? = nil
     /// Фокус строки ввода: экран уступает место клавиатуре только ей.
     var inputFocus: FocusState<Bool>.Binding
 
-    /// Смещение пальца во время свайпа по заголовку (вверх — отрицательное). Состояние жеста: если свайп
-    /// оборвала система (звонок, Пункт управления), оно само возвращается к нулю пружиной, и панель
+    /// Смещение пальца во время свайпа по строке бэклога (вверх — отрицательное). Состояние жеста: если свайп
+    /// оборвала система (звонок, Пункт управления), оно само возвращается к нулю пружиной, и остров
     /// не застревает на промежуточной высоте.
     @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.3)))
     private var dragDelta: CGFloat = 0
-    /// Ширина панели — чтобы знать, какие названия займут две строки.
+    /// Ширина острова — чтобы знать, какие названия займут две строки.
     @State private var drawerWidth: CGFloat = 0
-    /// Панель раскрыта на весь экран.
-    @State private var isFull = false
-    /// Высота списка в момент, когда взяли задачу: пока её тянут, список не сжимается вместе с панелью,
+    /// Высота списка в момент, когда взяли задачу: пока её тянут, список не сжимается вместе с островом,
     /// ячейка со строкой и её жестом остаётся жива.
     @State private var frozenListHeight: CGFloat?
     /// Начало экрана в координатах окна — палец при переносе считается по UIKit, а не по устаревающей
@@ -49,11 +52,11 @@ struct BacklogDrawerView: View {
 
     private let rowHeight: CGFloat = 66
     private var openCount: Int { tasks.filter { !$0.isDone }.count }
-    private var collapsedHeight: CGFloat { Tokens.drawerCollapsed }
+    private var collapsedHeight: CGFloat { Tokens.islandHeader + Tokens.islandInput }
     /// Высота открытого списка — по настоящим строкам: название в две строки делает строку 84 pt, а не 66.
     /// Пустой список — одна строка «Пусто» (66) и поля.
     private var listHeight: CGFloat {
-        tasks.isEmpty ? rowHeight + 8 : tasks.prefix(6).reduce(CGFloat(8)) { $0 + estimatedRowHeight($1) }
+        tasks.isEmpty ? rowHeight + 8 : tasks.reduce(CGFloat(8)) { $0 + estimatedRowHeight($1) }
     }
 
     /// Строка `TaskRowView`: поля 8 + 8, отступ 10, название 16 pt (до двух строк), 4, вторая строка 13 pt.
@@ -70,28 +73,35 @@ struct BacklogDrawerView: View {
         )
         return bounds.height > font.lineHeight * 1.5 ? 84 : rowHeight
     }
-    private var fullHeight: CGFloat { maxHeight.isFinite ? max(collapsedHeight + 100, maxHeight) : Tokens.drawerCollapsed + listHeight }
-    private var openHeight: CGFloat { min(Tokens.drawerCollapsed + listHeight, fullHeight) }
-    private var canExpand: Bool { fullHeight > openHeight + 60 }
-
-    private var restHeight: CGFloat {
-        guard isOpen else { return collapsedHeight }
-        return isFull && canExpand ? fullHeight : openHeight
+    /// Раскрытый остров: по строкам, но не выше `maxHeight` и не ниже одной строки списка.
+    private var openHeight: CGFloat {
+        let limit = maxHeight.isFinite ? max(collapsedHeight + rowHeight + 8, maxHeight) : .infinity
+        return min(collapsedHeight + listHeight, limit)
     }
+
+    private var restHeight: CGFloat { isOpen ? openHeight : collapsedHeight }
 
     private var height: CGFloat {
-        min(fullHeight, max(collapsedHeight, restHeight - dragDelta))
+        min(openHeight, max(collapsedHeight, restHeight - dragDelta))
     }
 
-    /// Список снова по высоте панели — той же пружиной, что сворачивает панель: если отпустили сразу,
-    /// пока панель ещё едет вниз, строки уходят вместе с ней, а не исчезают рывком.
+    /// Остров раскрыт или раскрывается: тогда он во всю ширину и до края экрана.
+    private var expanded: Bool { isOpen || height > collapsedHeight + 1 }
+
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: 26, bottomLeadingRadius: expanded ? 0 : 26,
+                               bottomTrailingRadius: expanded ? 0 : 26, topTrailingRadius: 26, style: .continuous)
+    }
+
+    /// Список снова по высоте острова — той же пружиной, что сворачивает остров: если отпустили сразу,
+    /// пока он ещё едет вниз, строки уходят вместе с ним, а не исчезают рывком.
     private func releaseList() {
         guard frozenListHeight != nil else { return }
         withAnimation(.spring(duration: 0.3)) { frozenListHeight = nil }
     }
 
-    /// Видимая часть списка между заголовком и строкой ввода.
-    private var visibleListHeight: CGFloat { max(0, height - Tokens.drawerCollapsed) }
+    /// Видимая часть списка между строкой бэклога и строкой ввода.
+    private var visibleListHeight: CGFloat { max(0, height - collapsedHeight) }
 
     private var hint: String? {
         guard let drag = drag else { return nil }
@@ -108,102 +118,95 @@ struct BacklogDrawerView: View {
                 .clipped()
             inputRow
         }
+        .padding(.bottom, expanded ? bottomPadding : 0)
         .frame(maxWidth: .infinity)
-        .frame(height: height)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { drawerWidth = $0 }
         .trackPlannerOrigin(plannerOrigin)
-        .reportZone("drawer")
         .background {
-            // Жидкое стекло: панель слегка просвечивает сетку под собой.
-            UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
+            // Жидкое стекло: остров просвечивает календарь под собой.
+            shape
                 .fill(Color.clear)
                 .glassEffect(
-                    .regular.tint(drag?.target == .backlog ? Color(hex: 0x1B2A24) : Tokens.drawer.opacity(0.78)),
-                    in: UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
+                    .regular.tint(drag?.target == .backlog ? Color(hex: 0x1B2A24) : Tokens.drawer.opacity(0.6)),
+                    in: shape
                 )
-                .shadow(color: Color.black.opacity(0.45), radius: 15, y: -10)
-                .ignoresSafeArea(edges: .bottom)
+                .shadow(color: Color.black.opacity(0.35), radius: 14, y: 4)
         }
-        .overlay(alignment: .top) {
-            UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22)
-                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-                .ignoresSafeArea(edges: .bottom)
-        }
-        .onChange(of: isOpen) { _, open in
-            if !open { isFull = false }
-        }
+        .overlay { shape.strokeBorder(Color.white.opacity(0.07), lineWidth: 1) }
+        // Зона сброса — сам остров: строка бэклога всегда на месте, туда тащат задачи.
+        .reportZone("drawer")
+        .padding(.horizontal, expanded ? 0 : 10)
+        .padding(.bottom, expanded ? 0 : floatingGap)
         .onChange(of: drag?.taskID) { _, id in
-            // Перенос закончился где угодно (в том числе сбросом экрана) — список снова по высоте панели.
+            // Перенос закончился где угодно (в том числе сбросом экрана) — список снова по высоте острова.
             if id == nil { releaseList() }
         }
     }
 
-    // MARK: - Заголовок
+    // MARK: - Строка бэклога
 
     private var header: some View {
-        VStack(spacing: 0) {
-            Capsule()
-                .fill(Color(hex: 0x3A3B41))
-                .frame(width: 38, height: 5)
-                .padding(.top, 6)
-                .padding(.bottom, 5)
-            HStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("Бэклог")
-                        .font(.system(size: 17, weight: .bold))
-                    Text("\(openCount)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0xC9C9D1))
-                        .frame(minWidth: 22, minHeight: 22)
-                        .padding(.horizontal, 3)
-                        .background(Tokens.badge, in: Capsule())
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Бэклог, \(openCount) " + DayMath.plural(openCount, "задача", "задачи", "задач"))
-                .accessibilityHint(isOpen ? "Свернуть" : "Открыть")
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { toggle() }
-                Spacer(minLength: 8)
-                if let hint = hint {
-                    Text(hint)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Tokens.accent)
-                        .lineLimit(1)
-                        .transition(.opacity)
-                } else if overdueCount > 0, let onOverdue {
-                    Button(action: onOverdue) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "clock")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Просрочено")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("\(overdueCount)")
-                                .font(.system(size: 12, weight: .bold))
-                                .monospacedDigit()
-                                .foregroundStyle(Color(hex: 0x1A0706))
-                                .frame(minWidth: 20, minHeight: 20)
-                                .padding(.horizontal, 2)
-                                .background(Tokens.overdueBadge, in: Capsule())
-                        }
-                        .foregroundStyle(Tokens.overdue)
-                        .padding(.leading, 10)
-                        .padding(.trailing, 5)
-                        .frame(height: 32)
-                        .background(Tokens.overdueChip, in: Capsule())
-                        .frame(height: Tokens.hitTarget)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Просрочено: \(overdueCount)")
-                    .transition(.opacity)
-                }
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Бэклог")
+                    .font(.system(size: 17, weight: .bold))
+                Text("\(openCount)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0xC9C9D1))
+                    .frame(minWidth: 22, minHeight: 22)
+                    .padding(.horizontal, 3)
+                    .background(Tokens.badge, in: Capsule())
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Tokens.caption)
+                    .rotationEffect(.degrees(isOpen ? 180 : 0))
             }
-            .frame(height: Tokens.hitTarget)
-            // Подсказка переноса и «Просрочено» сменяют друг друга плавно, без скачка.
-            .animation(.easeOut(duration: 0.15), value: hint)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Бэклог, \(openCount) " + DayMath.plural(openCount, "задача", "задачи", "задач"))
+            .accessibilityHint(isOpen ? "Свернуть" : "Открыть")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { toggle() }
+            Spacer(minLength: 8)
+            if let hint = hint {
+                Text(hint)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Tokens.accent)
+                    .lineLimit(1)
+                    .transition(.opacity)
+            } else if overdueCount > 0, let onOverdue {
+                Button(action: onOverdue) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Просрочено")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("\(overdueCount)")
+                            .font(.system(size: 12, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(Color(hex: 0x1A0706))
+                            .frame(minWidth: 20, minHeight: 20)
+                            .padding(.horizontal, 2)
+                            .background(Tokens.overdueBadge, in: Capsule())
+                    }
+                    .foregroundStyle(Tokens.overdue)
+                    .padding(.leading, 10)
+                    .padding(.trailing, 5)
+                    .frame(height: 32)
+                    .background(Tokens.overdueChip, in: Capsule())
+                    .frame(height: Tokens.hitTarget)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Просрочено: \(overdueCount)")
+                .transition(.opacity)
+            }
         }
+        .frame(height: Tokens.hitTarget)
+        // Подсказка переноса и «Просрочено» сменяют друг друга плавно, без скачка.
+        .animation(.easeOut(duration: 0.15), value: hint)
         .padding(.horizontal, 18)
-        .frame(height: Tokens.drawerHeader, alignment: .top)
+        .padding(.top, Tokens.islandHeader - Tokens.hitTarget)
+        .frame(height: Tokens.islandHeader, alignment: .top)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .foregroundStyle(Tokens.text)
@@ -221,32 +224,15 @@ struct BacklogDrawerView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// Тап по свёрнутой панели — открыть.
-    private func open() {
-        guard !isOpen else { return }
-        withAnimation(.spring(duration: 0.3)) { isOpen = true }
-    }
-
-    /// Тап по заголовку: свёрнута → открыта, открыта → свёрнута, на весь экран → открыта.
+    /// Тап по строке бэклога: свёрнут → раскрыт, раскрыт → свёрнут.
     private func toggle() {
-        withAnimation(.spring(duration: 0.3)) {
-            if isFull && canExpand {
-                isFull = false
-            } else {
-                isOpen.toggle()
-            }
-        }
+        withAnimation(.spring(duration: 0.3)) { isOpen.toggle() }
     }
 
     /// Отпустили свайп: к ближайшему положению по тому, куда летел палец.
     private func settle(to projected: CGFloat) {
-        var detents = [collapsedHeight, openHeight]
-        if canExpand { detents.append(fullHeight) }
-        let target = detents.min { abs($0 - projected) < abs($1 - projected) } ?? collapsedHeight
-        withAnimation(.spring(duration: 0.3)) {
-            isFull = canExpand && target == fullHeight
-            isOpen = target > collapsedHeight
-        }
+        let open = abs(openHeight - projected) < abs(collapsedHeight - projected)
+        withAnimation(.spring(duration: 0.3)) { isOpen = open }
     }
 
     // MARK: - Список
@@ -313,14 +299,14 @@ struct BacklogDrawerView: View {
 
     private var inputRow: some View {
         // Строка ввода и круглая кнопка — отдельные стеклянные фигуры (без контейнера: он склеивал бы их).
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 8) {
             TextField("Завтра в 10 созвон, важно", text: $input)
                 .focused(inputFocus)
                 .font(.system(size: 15))
                 .foregroundStyle(Tokens.text)
                 .padding(.horizontal, 16)
                 .frame(height: Tokens.hitTarget)
-                .glassEffect(.regular.tint(Tokens.field.opacity(0.55)).interactive(), in: Capsule())
+                .glassEffect(.regular.tint(Tokens.field.opacity(0.5)).interactive(), in: Capsule())
                 .submitLabel(.done)
                 .onSubmit(onSubmit)
                 .accessibilityLabel("Новая задача")
@@ -345,9 +331,14 @@ struct BacklogDrawerView: View {
                 .accessibilityLabel("Добавить задачу")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .frame(height: 60, alignment: .top)
-        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1) }
+        .padding(.horizontal, 8)
+        .frame(height: Tokens.islandInput)
     }
+}
+
+/// Настройки острова бэклога.
+enum BacklogSettings {
+    /// Задачу вытащили из раскрытого бэклога: после переноса раскрыть его снова (`true`)
+    /// или оставить свёрнутым, пока не нажмёшь сам (`false`).
+    static let reopenKey = "backlogReopenAfterDrag"
 }

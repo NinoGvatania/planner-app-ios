@@ -34,6 +34,13 @@ struct PlannerScreen: View {
     @State private var editingTask: PlannerTask?
     @State private var newTitle = ""
     @State private var rootSize: CGSize = .zero
+    /// Полоска «домой» снизу: остров опускается к ней, раскрытый — заходит под неё.
+    @State private var rootSafeBottom: CGFloat = 0
+    /// Высота, доступная острову (с клавиатурой — до неё).
+    @State private var islandSpace: CGFloat = 0
+    /// Остров свернули, потому что из него взяли задачу: после переноса — раскрыть снова (по настройке).
+    @State private var reopenBacklogAfterDrag = false
+    @AppStorage(BacklogSettings.reopenKey) private var backlogReopens = true
     @State private var gridScroll = GridScroll()
     @State private var pagingLock = PagingLock()
     @State private var scrollToNowRequest = 0
@@ -203,15 +210,77 @@ struct PlannerScreen: View {
     }
 
     var body: some View {
-        // Размер берётся у GeometryReader: он задаётся системой и не зависит от содержимого,
-        // иначе панель бэклога «на весь экран» раздувала бы стек и сама же росла от него.
-        GeometryReader { geometry in
-            screen
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-                .onChange(of: geometry.size, initial: true) { _, size in rootSize = size }
+        ZStack(alignment: .bottom) {
+            // Размер берётся у GeometryReader: он задаётся системой и не зависит от содержимого.
+            // Экран доходит до самого низа (под остров и полоску «домой») и не сжимается клавиатурой.
+            GeometryReader { geometry in
+                screen
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                    .onChange(of: geometry.size, initial: true) { _, size in rootSize = size }
+                    .onChange(of: geometry.safeAreaInsets.bottom, initial: true) { _, inset in
+                        // Только полоска «домой» (до 100 pt): высота клавиатуры сюда попадать не должна.
+                        if inset < 100 { rootSafeBottom = inset }
+                    }
+            }
+            .ignoresSafeArea([.container, .keyboard], edges: .bottom)
+
+            // Остров висит над экраном; с клавиатурой поднимается только он, и только для своей строки ввода
+            // (клавиатура алерта «Новая задача» или листа его не двигает).
+            islandLayer
+                .ignoresSafeArea(inputFocused ? .container : [.container, .keyboard], edges: .bottom)
         }
-        // Клавиатура алерта «Новая задача» или листа не сжимает экран под ними — только своя строка ввода.
-        .ignoresSafeArea(inputFocused ? [] : .keyboard, edges: .bottom)
+        .coordinateSpace(name: "planner")
+        .onPreferenceChange(ZoneFramesKey.self) { frames in
+            zones = frames
+            // Верх сетки на случай, когда «timeline» молчит (свайп): последнее известное значение.
+            if let timeline = frames["timeline"] { gridScroll.viewportMinY = timeline.minY }
+        }
+        .onChange(of: zones) { _, _ in refreshDropTarget() }
+        .overlay(alignment: .topLeading) { ghostView }
+    }
+
+    /// Зазор под свёрнутым островом: опущен к полоске «домой», с клавиатурой — сразу над ней.
+    private var islandGap: CGFloat { inputFocused ? 6 : max(6, rootSafeBottom - 14) }
+
+    /// Сколько снизу страницы закрывает свёрнутый остров (без клавиатуры): прокрутка заходит под него,
+    /// месяц и матрица заканчиваются над ним. Раскрытый остров страницы не сжимает — ложится поверх.
+    private var islandInset: CGFloat { Tokens.islandCollapsed + max(6, rootSafeBottom - 14) + 8 }
+
+    private var islandLayer: some View {
+        BacklogDrawerView(
+            tasks: backlogTasks,
+            isOpen: $drawerOpen,
+            input: $input,
+            onSubmit: submitInput,
+            onVoice: { showVoice = true },
+            onToggle: toggleDone,
+            drag: drag,
+            onDragChanged: dragChanged,
+            onDragEnded: dragEnded,
+            onEdit: { editingTask = $0 },
+            onDelete: deleteTask,
+            maxHeight: islandMaxHeight,
+            bottomPadding: inputFocused ? 6 : max(8, rootSafeBottom - 12),
+            floatingGap: islandGap,
+            onDragCancelled: dragCancelled,
+            overdueCount: overdueTasks.count,
+            onOverdue: { showOverdue = true },
+            inputFocus: $inputFocused
+        )
+        .overlay(alignment: toastAboveDrawer ? .top : .bottom) { toastLayer }
+        // Число строк бэклога меняет высоту раскрытого острова — той же пружиной.
+        .animation(.spring(duration: 0.3), value: backlogTasks.count)
+        .animation(.easeOut(duration: 0.22), value: toast)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { islandSpace = $0 }
+    }
+
+    /// Раскрытый остров — не выше половины экрана; с клавиатурой — чтобы шапка оставалась видна.
+    private var islandMaxHeight: CGFloat {
+        guard rootSize.height > 0 else { return .infinity }
+        let half = rootSize.height * 0.5
+        let room = islandSpace > 0 ? islandSpace - 62 - (isDayGrid ? 64 : 0) - 12 : half
+        return max(Tokens.islandCollapsed + 74, min(half, room))
     }
 
     private var screen: some View {
@@ -265,41 +334,9 @@ struct PlannerScreen: View {
             ) { index, live, tick in
                 page(index: index, live: live, tick: tick)
             }
-
-            BacklogDrawerView(
-                tasks: backlogTasks,
-                isOpen: $drawerOpen,
-                input: $input,
-                onSubmit: submitInput,
-                onVoice: { showVoice = true },
-                onToggle: toggleDone,
-                drag: drag,
-                onDragChanged: dragChanged,
-                onDragEnded: dragEnded,
-                onEdit: { editingTask = $0 },
-                onDelete: deleteTask,
-                maxHeight: rootSize.height > 0 ? max(Tokens.drawerCollapsed + 100, rootSize.height - 62 - (isDayGrid ? 64 : 0) - 24) : .infinity,
-                onDragCancelled: dragCancelled,
-                overdueCount: overdueTasks.count,
-                onOverdue: { showOverdue = true },
-                inputFocus: $inputFocused
-            )
-            .overlay(alignment: toastAboveDrawer ? .top : .bottom) { toastLayer }
         }
-        .coordinateSpace(name: "planner")
-        .onPreferenceChange(ZoneFramesKey.self) { frames in
-            zones = frames
-            // Верх сетки на случай, когда «timeline» молчит (свайп): последнее известное значение.
-            if let timeline = frames["timeline"] { gridScroll.viewportMinY = timeline.minY }
-        }
-        .onChange(of: zones) { _, _ in refreshDropTarget() }
         .background(Tokens.background.ignoresSafeArea())
         .foregroundStyle(Tokens.text)
-        .overlay(alignment: .topLeading) { ghostView }
-        // Число строк бэклога меняет высоту панели: пейджер над ней сжимается той же пружиной,
-        // без полосы пустого фона между ними.
-        .animation(.spring(duration: 0.3), value: backlogTasks.count)
-        .animation(.easeOut(duration: 0.22), value: toast)
         .sheet(isPresented: $showOverdue, onDismiss: { recentlyDoneOverdue = [] }) {
             OverdueSheet(
                 tasks: overdueSheetTasks,
@@ -405,6 +442,8 @@ struct PlannerScreen: View {
                     onDragEnded: dragEnded,
                     onDragCancelled: dragCancelled
                 )
+                // Месяц заканчивается над свёрнутым островом; раскрытый остров ложится поверх, месяц не сжимается.
+                .padding(.bottom, islandInset)
                 .id(index)
             case .year:
                 YearView(year: DayMath.year(range.start), tasks: visibleTasks) { start in
@@ -413,6 +452,7 @@ struct PlannerScreen: View {
                         period = .month
                     }
                 }
+                .contentMargins(.bottom, islandInset, for: .scrollContent)
                 .id(index)
             }
         case .list:
@@ -423,6 +463,8 @@ struct PlannerScreen: View {
                 onToggle: toggleDone, onDragChanged: dragChanged, onDragEnded: dragEnded,
                 onEdit: { editingTask = $0 }, onDragCancelled: dragCancelled
             )
+            // Прокрутка заходит под полупрозрачный остров, последние строки докручиваются над ним.
+            .contentMargins(.bottom, islandInset, for: .scrollContent)
             .id(index)
         case .matrix:
             MatrixView(
@@ -431,6 +473,7 @@ struct PlannerScreen: View {
                 onEdit: { editingTask = $0 }, onDelete: deleteTask, onDragCancelled: dragCancelled,
                 live: live, lock: pagingLock
             )
+            .padding(.bottom, islandInset)
             .id(index)
         case .projects:
             ProjectsView(
@@ -439,9 +482,12 @@ struct PlannerScreen: View {
                 onEdit: { editingTask = $0 }, onManageProjects: { showProjects = true },
                 onDragCancelled: dragCancelled, live: live
             )
+            // Доска проектов при удержании должна целиком быть над островом — поэтому отступ, а не прокрутка под ним.
+            .padding(.bottom, islandInset)
             .id(index)
         case .chart:
             DashboardView(tasks: filtered(tasks, in: range), onOpenProjects: { showProjects = true })
+                .contentMargins(.bottom, islandInset, for: .scrollContent)
                 .id(index)
         }
     }
@@ -474,7 +520,8 @@ struct PlannerScreen: View {
             allDayExpanded: Binding(
                 get: { allDayExpandedDays == days },
                 set: { allDayExpandedDays = $0 ? days : nil }
-            )
+            ),
+            bottomInset: islandInset
         )
     }
 
@@ -523,7 +570,7 @@ struct PlannerScreen: View {
 
     /// Над панелью бэклога хватает места для тоста (шапка и полоска недели не задеты).
     private var toastAboveDrawer: Bool {
-        let drawerTop = zones["drawer"]?.minY ?? (rootSize.height - Tokens.drawerCollapsed)
+        let drawerTop = zones["drawer"]?.minY ?? (rootSize.height - Tokens.islandCollapsed)
         let chrome: CGFloat = 62 + (isDayGrid ? 64 : 0)
         return drawerTop - chrome >= toastPillHeight + 12 + 8
     }
@@ -679,6 +726,9 @@ struct PlannerScreen: View {
                              grabOffsetY: grab, fromTimeline: task.day != nil, target: nil)
             selectedID = nil
             if drawerOpen && task.isInBacklog {
+                // Остров уступает место: задачу тащат на календарь. После переноса — раскрыть снова,
+                // если так выбрано в настройках.
+                reopenBacklogAfterDrag = true
                 withAnimation(.spring(duration: 0.3)) { drawerOpen = false }
             }
         }
@@ -693,6 +743,16 @@ struct PlannerScreen: View {
         drag = nil
         springTask?.cancel()
         springOffset = nil
+        reopenBacklogIfNeeded()
+    }
+
+    /// Задачу брали из раскрытого бэклога — после переноса он раскрывается снова (или остаётся свёрнутым).
+    private func reopenBacklogIfNeeded() {
+        guard reopenBacklogAfterDrag else { return }
+        reopenBacklogAfterDrag = false
+        if backlogReopens {
+            withAnimation(.spring(duration: 0.3)) { drawerOpen = true }
+        }
     }
 
     private func dragEnded() {
@@ -700,6 +760,7 @@ struct PlannerScreen: View {
         drag = nil
         springTask?.cancel()
         springOffset = nil
+        reopenBacklogIfNeeded()
         guard let target = state.target, let task = tasks.first(where: { $0.id == state.taskID }) else { return }
         switch target {
         case .backlog:

@@ -30,11 +30,11 @@ enum Tokens {
 
     static let hourHeight: CGFloat = 56
     static let gutter: CGFloat = 52
-    /// Заголовок 52 + строка ввода 60; отступ под индикатором «домой» добавляет система.
-    /// Заголовок панели бэклога: ручка (6 + 5 + 5) и строка 44.
-    static let drawerHeader: CGFloat = 60
-    /// Свёрнутая панель: заголовок и строка ввода (60).
-    static let drawerCollapsed: CGFloat = drawerHeader + 60
+    /// Нижний остров: строка бэклога (44 и отступ сверху) и строка ввода (44 и поля).
+    static let islandHeader: CGFloat = 50
+    static let islandInput: CGFloat = 54
+    /// Свёрнутый остров — две строки.
+    static let islandCollapsed: CGFloat = islandHeader + islandInput
     static let hitTarget: CGFloat = 44
 }
 

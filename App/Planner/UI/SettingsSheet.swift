@@ -15,6 +15,7 @@ struct SettingsSheet: View {
     @State private var syncNote = ""
     @AppStorage(ClaudeSettings.enabledKey) private var claudeEnabled = true
     @AppStorage(ClaudeSettings.modelKey) private var claudeModel = ClaudeSettings.defaultModel
+    @AppStorage(BacklogSettings.reopenKey) private var backlogReopens = true
     /// Ключ в поле ввода (сохраняется в связку ключей кнопкой).
     @State private var claudeKey = ""
     @State private var claudeHasKey = ClaudeSettings.hasKey
@@ -30,6 +31,16 @@ struct SettingsSheet: View {
                             Text(option.title).tag(option.minutes)
                         }
                     }
+                }
+                Section {
+                    Picker("После переноса", selection: $backlogReopens) {
+                        Text("Раскрыть снова").tag(true)
+                        Text("Оставить свёрнутым").tag(false)
+                    }
+                } header: {
+                    Text("Бэклог")
+                } footer: {
+                    Text("Когда тянешь задачу из раскрытого бэклога, он сворачивается. После того как отпустил — раскрывается снова или остаётся свёрнутым, пока не нажмёшь на него сам.")
                 }
                 calendarSection
                 claudeSection
