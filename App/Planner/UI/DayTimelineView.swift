@@ -162,6 +162,11 @@ struct DayTimelineView: View {
                 .reportZone("timeline", enabled: live && !pagerSwiping)
             }
         }
+        // Остров свернулся в начале переноса — край автопрокрутки сдвинулся, а палец мог не шевельнуться.
+        .onChange(of: islandTop) { _, _ in
+            guard live, let y = drag?.location.y else { return }
+            updateAutoScroll(fingerY: y)
+        }
         .onChange(of: drag?.location) { _, location in
             guard live else { return }
             if let location = location {

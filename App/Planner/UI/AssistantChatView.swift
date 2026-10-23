@@ -46,6 +46,8 @@ struct AssistantChatView: View {
             .joined(separator: " ")
     }
     private var canSend: Bool { !busy && !outgoing.isEmpty }
+    /// Поле только показывает текст: идёт диктовка или распознаватель дописывает последний заход.
+    private var showsLive: Bool { recorder.isListening || !recorder.liveText.isEmpty }
     private var activeIndex: Int? { messages.lastIndex { $0.proposal == .active } }
 
     var body: some View {
@@ -275,7 +277,7 @@ struct AssistantChatView: View {
                 .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if active && !busy {
+            if active {
                 Button {
                     guard let m = messages.firstIndex(where: { $0.id == messageID }) else { return }
                     withAnimation(.easeOut(duration: 0.2)) { messages[m].drafts.removeAll { $0.id == draft.id } }
@@ -286,10 +288,14 @@ struct AssistantChatView: View {
                         .frame(width: Tokens.hitTarget, height: Tokens.hitTarget)
                         .contentShape(Rectangle())
                 }
+                // Пока ассистент отвечает, список заморожен: крестик на месте, но неактивен — карточка не прыгает.
+                .disabled(busy)
+                .opacity(busy ? 0.3 : 1)
                 .accessibilityLabel("Убрать: " + draft.title)
             }
         }
         .padding(.leading, 12)
+        .padding(.trailing, active ? 0 : 12)
         .padding(.vertical, 9)
         .frame(minHeight: 52)
         .background(Tokens.panel, in: RoundedRectangle(cornerRadius: 14))
@@ -330,8 +336,9 @@ struct AssistantChatView: View {
                         .font(.system(size: 15))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
-                        .opacity(recorder.isListening ? 0 : 1)
-                    if recorder.isListening {
+                        .opacity(showsLive ? 0 : 1)
+                        .allowsHitTesting(!showsLive)
+                    if showsLive {
                         // Пока слушаю — поле показывает уже сказанное и то, что распознаётся сейчас.
                         Text(outgoing.isEmpty ? "Слушаю…" : outgoing)
                             .font(.system(size: 15))
@@ -381,11 +388,9 @@ struct AssistantChatView: View {
 
     private func toggleListening() {
         if recorder.isListening {
-            // Недоговорённое — сразу в поле, без ожидания распознавателя: иначе последние слова на миг
-            // пропадали бы, а напечатанное в этот миг встало бы перед ними.
-            let live = recorder.liveText.trimmingCharacters(in: .whitespacesAndNewlines)
-            recorder.shutdown()
-            if !live.isEmpty { composer = composer.isEmpty ? live : composer + " " + live }
+            // Распознаватель дописывает последний заход (до 1,5 с) и отдаёт его целиком — с последними
+            // словами и знаками; пока он не пришёл, поле показывает текст, править его ещё нельзя.
+            recorder.pause()
         } else {
             composerFocused = false
             Task { await recorder.start() }
