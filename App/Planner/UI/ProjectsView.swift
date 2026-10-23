@@ -192,9 +192,16 @@ struct ProjectsView: View {
     private var dropBoard: some View {
         GeometryReader { geometry in
             let all = sections
-            let rows = max(1, (all.count + 1) / 2)
             let spacing: CGFloat = 10
-            let rowHeight = max(56, (geometry.size.height - 24 - spacing * CGFloat(rows)) / CGFloat(rows))
+            // Два столбца, а если проектов так много, что строки ниже 44 pt, — три: доска всегда целиком
+            // в своей рамке, над островом (под островом бросок ушёл бы в бэклог).
+            let fits = { (columns: Int) -> CGFloat in
+                let rows = max(1, (all.count + columns - 1) / columns)
+                return (geometry.size.height - 24 - spacing * CGFloat(rows)) / CGFloat(rows)
+            }
+            let columns = fits(2) >= Tokens.hitTarget ? 2 : 3
+            let rows = max(1, (all.count + columns - 1) / columns)
+            let rowHeight = max(Tokens.hitTarget, fits(columns))
             VStack(spacing: spacing) {
                 Text("В какой проект?")
                     .font(.system(size: 13, weight: .semibold))
@@ -202,8 +209,8 @@ struct ProjectsView: View {
                     .frame(height: 24)
                 ForEach(0..<rows, id: \.self) { row in
                     HStack(spacing: spacing) {
-                        ForEach(0..<2, id: \.self) { column in
-                            let index = row * 2 + column
+                        ForEach(0..<columns, id: \.self) { column in
+                            let index = row * columns + column
                             if index < all.count {
                                 boardTarget(name: all[index].name, style: all[index].style)
                             } else {
@@ -217,6 +224,7 @@ struct ProjectsView: View {
             }
             .padding(.horizontal, 10)
         }
+        .clipped()
         .padding(.bottom, 10)
         .background(Tokens.background.opacity(0.94))
         .allowsHitTesting(false)

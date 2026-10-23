@@ -220,10 +220,11 @@ struct PlannerScreen: View {
             GeometryReader { geometry in
                 screen
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-                    .onChange(of: geometry.size, initial: true) { _, size in rootSize = size }
-                    .onChange(of: geometry.safeAreaInsets.bottom, initial: true) { _, inset in
-                        // Только полоска «домой» (до 100 pt): высота клавиатуры сюда попадать не должна.
-                        if inset < 100 { rootSafeBottom = inset }
+                    .onChange(of: geometry.size, initial: true) { _, size in
+                        rootSize = size
+                        // Полоску «домой» берём у окна: этот GeometryReader сам заходит под неё и видел бы 0,
+                        // а у окна в отступах нет клавиатуры.
+                        rootSafeBottom = Self.windowSafeBottom
                     }
             }
             .ignoresSafeArea([.container, .keyboard], edges: .bottom)
@@ -241,6 +242,12 @@ struct PlannerScreen: View {
         }
         .onChange(of: zones) { _, _ in refreshDropTarget() }
         .overlay(alignment: .topLeading) { ghostView }
+    }
+
+    private static var windowSafeBottom: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first?.safeAreaInsets.bottom ?? 0
     }
 
     /// Зазор под свёрнутым островом: опущен к полоске «домой», с клавиатурой — сразу над ней.
@@ -356,6 +363,8 @@ struct PlannerScreen: View {
             )
         }
         .task {
+            // На самой первой раскладке окно могло ещё не стать главным — перечитать, когда оно есть.
+            rootSafeBottom = Self.windowSafeBottom
             SeedData.seedIfNeeded(in: context)
             SeedData.assignProjectColorsIfNeeded(in: context)
             let created = materializeRoutines()
