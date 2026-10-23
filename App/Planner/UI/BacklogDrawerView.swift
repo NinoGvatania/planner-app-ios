@@ -135,7 +135,7 @@ struct BacklogDrawerView: View {
         .overlay { shape.strokeBorder(Color.white.opacity(0.07), lineWidth: 1) }
         // Зона сброса — сам остров: строка бэклога всегда на месте, туда тащат задачи.
         .reportZone("drawer")
-        .padding(.horizontal, expanded ? 0 : 10)
+        .padding(.horizontal, expanded ? 0 : 14)
         .padding(.bottom, expanded ? 0 : floatingGap)
         .onChange(of: drag?.taskID) { _, id in
             // Перенос закончился где угодно (в том числе сбросом экрана) — список снова по высоте острова.

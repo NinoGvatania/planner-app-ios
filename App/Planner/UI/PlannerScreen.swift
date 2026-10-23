@@ -244,11 +244,13 @@ struct PlannerScreen: View {
     }
 
     /// Зазор под свёрнутым островом: опущен к полоске «домой», с клавиатурой — сразу над ней.
-    private var islandGap: CGFloat { inputFocused ? 6 : max(6, rootSafeBottom - 14) }
+    private var islandGap: CGFloat { inputFocused ? 8 : restingIslandGap }
+    /// Без клавиатуры остров стоит над полоской «домой», а не на ней: у самого низа он прилипал к скруглению экрана.
+    private var restingIslandGap: CGFloat { max(12, rootSafeBottom - 2) }
 
     /// Сколько снизу страницы закрывает свёрнутый остров (без клавиатуры): прокрутка заходит под него,
     /// месяц и матрица заканчиваются над ним. Раскрытый остров страницы не сжимает — ложится поверх.
-    private var islandInset: CGFloat { Tokens.islandCollapsed + max(6, rootSafeBottom - 14) + 8 }
+    private var islandInset: CGFloat { Tokens.islandCollapsed + restingIslandGap + 8 }
 
     private var islandLayer: some View {
         BacklogDrawerView(
@@ -455,13 +457,12 @@ struct PlannerScreen: View {
                 .padding(.bottom, islandInset)
                 .id(index)
             case .year:
-                YearView(year: DayMath.year(range.start), tasks: visibleTasks) { start in
+                YearView(year: DayMath.year(range.start), tasks: visibleTasks, bottomInset: islandInset) { start in
                     withAnimation(.easeOut(duration: 0.2)) {
                         dayOffset = DayMath.offset(of: start)
                         period = .month
                     }
                 }
-                .contentMargins(.bottom, islandInset, for: .scrollContent)
                 .id(index)
             }
         case .list:
