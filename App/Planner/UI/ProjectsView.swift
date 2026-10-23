@@ -188,18 +188,20 @@ struct ProjectsView: View {
 
     // MARK: - Доска для сброса
 
-    /// Все проекты и «Без проекта» на одном экране, по два в ряд.
+    /// Все проекты и «Без проекта» на одном экране — доска всегда целиком в своей рамке, над островом
+    /// (под островом бросок ушёл бы в бэклог). Обычно по два в ряд; если проектов много — по три или четыре,
+    /// а при совсем низких строках плитка компактная: точка и название в строку, без счётчика.
     private var dropBoard: some View {
         GeometryReader { geometry in
             let all = sections
             let spacing: CGFloat = 10
-            // Два столбца, а если проектов так много, что строки ниже 44 pt, — три: доска всегда целиком
-            // в своей рамке, над островом (под островом бросок ушёл бы в бэклог).
+            /// Высота строки при таком числе столбцов: заголовок 24 и промежуток после него и между строками.
             let fits = { (columns: Int) -> CGFloat in
                 let rows = max(1, (all.count + columns - 1) / columns)
                 return (geometry.size.height - 24 - spacing * CGFloat(rows)) / CGFloat(rows)
             }
-            let columns = fits(2) >= Tokens.hitTarget ? 2 : 3
+            let fullTile: CGFloat = 64
+            let columns = fits(2) >= fullTile ? 2 : (fits(3) >= fullTile ? 3 : 4)
             let rows = max(1, (all.count + columns - 1) / columns)
             let rowHeight = max(Tokens.hitTarget, fits(columns))
             VStack(spacing: spacing) {
@@ -212,7 +214,7 @@ struct ProjectsView: View {
                         ForEach(0..<columns, id: \.self) { column in
                             let index = row * columns + column
                             if index < all.count {
-                                boardTarget(name: all[index].name, style: all[index].style)
+                                boardTarget(name: all[index].name, style: all[index].style, compact: rowHeight < fullTile)
                             } else {
                                 Color.clear
                             }
@@ -220,7 +222,6 @@ struct ProjectsView: View {
                     }
                     .frame(height: rowHeight)
                 }
-                Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
         }
@@ -230,20 +231,32 @@ struct ProjectsView: View {
         .allowsHitTesting(false)
     }
 
-    private func boardTarget(name: String?, style: QuadrantStyle) -> some View {
+    private func boardTarget(name: String?, style: QuadrantStyle, compact: Bool = false) -> some View {
         let hovered = drag?.target == .project(name)
         let count = items(in: name).filter { !$0.isDone }.count
-        return VStack(spacing: 4) {
-            Circle().fill(style.dot).frame(width: 12, height: 12)
-            Text(name ?? "Без проекта")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(name == nil ? Tokens.caption : Tokens.text)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
-            Text("\(count)")
-                .font(.system(size: 12))
-                .foregroundStyle(Tokens.caption)
+        let title = Text(name ?? "Без проекта")
+            .font(.system(size: compact ? 13 : 14, weight: .bold))
+            .foregroundStyle(name == nil ? Tokens.caption : Tokens.text)
+        return Group {
+            if compact {
+                HStack(spacing: 6) {
+                    Circle().fill(style.dot).frame(width: 10, height: 10)
+                    title
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+            } else {
+                VStack(spacing: 4) {
+                    Circle().fill(style.dot).frame(width: 12, height: 12)
+                    title
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                    Text("\(count)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Tokens.caption)
+                }
+            }
         }
         .padding(6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
