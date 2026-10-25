@@ -67,7 +67,7 @@ final class WidgetSnapshotTests: XCTestCase {
         let a = item("Сегодня", start: 9 * 60)
         let old = item("Вчера", start: 9 * 60)
         let snapshot = WidgetSnapshot(day: day, items: [a], streak: 2, overdue: 1, backlog: 0,
-                                      overdueItems: [old], todayClosed: false)
+                                      overdueItems: [old], streakBefore: 2, doneElsewhere: 0)
         let checked = snapshot.toggling(a.id, at: day)
         XCTAssertTrue(checked.isDone(a.id))
         XCTAssertEqual(checked.displayStreak, 3)
@@ -93,7 +93,7 @@ final class WidgetSnapshotTests: XCTestCase {
 
     func testStreakAtRiskInTheEvening() {
         let snapshot = WidgetSnapshot(day: day, items: [item("Дело", start: nil)], streak: 3, overdue: 0, backlog: 0,
-                                      todayClosed: false)
+                                      streakBefore: 3, doneElsewhere: 0)
         XCTAssertFalse(snapshot.streakAtRisk(at: 17 * 60 + 59))
         XCTAssertTrue(snapshot.streakAtRisk(at: 18 * 60))
         XCTAssertFalse(snapshot.toggling(snapshot.items[0].id).streakAtRisk(at: 21 * 60))
@@ -130,26 +130,75 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertNil(moved.items.last?.start)
         XCTAssertNil(moved.items.last?.day)
         XCTAssertEqual(moved.timing(of: moved.items[1], at: 600), .allDay)
-        // Не все просроченные были в снимке — остальные приложение перенесёт само.
-        XCTAssertEqual(moved.overdue, 2)
+        // Не все просроченные были в снимке, но приложение перенесёт и остальные.
+        XCTAssertEqual(moved.overdue, 0)
         XCTAssertEqual(moved.overdueItems?.count, 0)
     }
 
-    func testStreakNotDoubleCountedWhenTodayClosed() {
+    func testStreakCountsOnlyWhatIsDoneToday() {
+        // Сделана раньше срока, в прошлый день: в серию за сегодня не идёт.
+        var early = item("Заранее", start: nil, done: true)
+        early.doneToday = false
+        let open = item("Дело", start: nil)
+        let snapshot = WidgetSnapshot(day: day, items: [early, open], streak: 4, overdue: 0, backlog: 0,
+                                      streakBefore: 4, doneElsewhere: 0)
+        XCTAssertFalse(snapshot.isTodayClosed)
+        XCTAssertEqual(snapshot.displayStreak, 4)
+        XCTAssertTrue(snapshot.streakAtRisk(at: 20 * 60))
+        // Сделано сегодня из бэклога — день закрыт, хотя в списках снимка галочек нет.
+        let elsewhere = WidgetSnapshot(day: day, items: [open], streak: 5, overdue: 0, backlog: 0,
+                                       streakBefore: 4, doneElsewhere: 1)
+        XCTAssertTrue(elsewhere.isTodayClosed)
+        XCTAssertEqual(elsewhere.displayStreak, 5)
+    }
+
+    func testUncheckingTheOnlyDoneTaskReopensTheDay() {
+        var done = item("Сделал", start: nil, done: true)
+        done.doneToday = true
+        let snapshot = WidgetSnapshot(day: day, items: [done], streak: 5, overdue: 0, backlog: 0,
+                                      streakBefore: 4, doneElsewhere: 0)
+        XCTAssertEqual(snapshot.displayStreak, 5)
+        let reopened = snapshot.toggling(done.id)
+        XCTAssertFalse(reopened.isTodayClosed)
+        XCTAssertEqual(reopened.displayStreak, 4)
+        XCTAssertTrue(reopened.streakAtRisk(at: 19 * 60))
+        // Снова отметил — день закрыт.
+        XCTAssertEqual(reopened.toggling(done.id).displayStreak, 5)
+    }
+
+    func testOldSnapshotWithoutStreakBefore() {
         let a = item("Сегодня", start: nil, done: true)
-        let snapshot = WidgetSnapshot(day: day, items: [a], streak: 5, overdue: 0, backlog: 0, todayClosed: true)
+        let snapshot = WidgetSnapshot(day: day, items: [a], streak: 5, overdue: 0, backlog: 0)
+        XCTAssertTrue(snapshot.isTodayClosed)
         XCTAssertEqual(snapshot.displayStreak, 5)
     }
 
-    func testWeekShowsTodayClosedFromWidget() {
+    func testWeekFollowsTodayInWidget() {
         let today = utc.startOfDay(for: day)
         let a = item("Сегодня", start: nil)
         let week = [true, true, false, true, false, false, false]
         let snapshot = WidgetSnapshot(day: today, items: [a], streak: 1, overdue: 0, backlog: 0,
-                                      todayClosed: false, week: week)
+                                      streakBefore: 1, doneElsewhere: 0, week: week)
         XCTAssertEqual(WidgetSnapshot.weekIndex(of: today, calendar: utc), 4)
         XCTAssertEqual(snapshot.displayWeek(calendar: utc), week)
-        XCTAssertEqual(snapshot.toggling(a.id).displayWeek(calendar: utc), [true, true, false, true, true, false, false])
+        let checked = snapshot.toggling(a.id)
+        XCTAssertEqual(checked.displayWeek(calendar: utc), [true, true, false, true, true, false, false])
+        XCTAssertEqual(checked.toggling(a.id).displayWeek(calendar: utc), week)
+    }
+
+    func testFocusFillsFreeTimeWithTaskWithoutTime() {
+        let meeting = item("Встреча", start: 15 * 60)
+        let read = item("Почитать", start: nil)
+        let snapshot = WidgetSnapshot(day: day, items: [meeting, read], streak: 0, overdue: 0, backlog: 0)
+        // До встречи пять часов — свободное время: главная — задача без времени.
+        XCTAssertEqual(snapshot.focus(at: 10 * 60)?.title, "Почитать")
+        // До встречи меньше часа — она главная.
+        XCTAssertEqual(snapshot.focus(at: 14 * 60 + 10)?.title, "Встреча")
+        XCTAssertEqual(snapshot.focus(at: 15 * 60 + 10)?.title, "Встреча")
+        // Без задач без времени — встреча, даже если до неё далеко.
+        XCTAssertEqual(WidgetSnapshot(day: day, items: [meeting], streak: 0, overdue: 0, backlog: 0).focus(at: 9 * 60)?.title,
+                       "Встреча")
+        XCTAssertNil(WidgetSnapshot(day: day, items: [], streak: 0, overdue: 0, backlog: 0).focus(at: 600))
     }
 
     func testActionsAppliedInOrder() {
@@ -184,21 +233,28 @@ final class WidgetSnapshotTests: XCTestCase {
         let today = calendar.startOfDay(for: day)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
         let open = item("Не успел", start: 9 * 60)
-        let done = item("Сделал", start: nil, done: true)
         let next = item("Завтрашняя", start: 10 * 60)
+        var done = item("Сделал", start: nil, done: true)
+        done.doneToday = true
+        var early = item("Завтрашняя заранее", start: nil, done: true)
+        early.doneToday = true
         let snapshot = WidgetSnapshot(day: today, items: [open, done], streak: 4, overdue: 1, backlog: 0,
-                                      overdueItems: [item("Старая", start: nil)], tomorrowItems: [next], todayClosed: true,
+                                      overdueItems: [item("Старая", start: nil)], tomorrowItems: [next, early],
+                                      streakBefore: 3, doneElsewhere: 0,
                                       bestStreak: 3, week: [true, true, true, true, true, false, false])
         XCTAssertEqual(snapshot.rolled(to: today, calendar: calendar)?.items.count, 2)
         let rolled = snapshot.rolled(to: tomorrow.addingTimeInterval(3600), calendar: calendar)
         XCTAssertEqual(rolled?.day, tomorrow)
-        XCTAssertEqual(rolled?.items.map(\.title), ["Завтрашняя"])
+        XCTAssertEqual(rolled?.items.map(\.title), ["Завтрашняя", "Завтрашняя заранее"])
         XCTAssertEqual(rolled?.overdue, 2)
         XCTAssertEqual(rolled?.overdueItems?.map(\.title), ["Старая", "Не успел"])
         XCTAssertEqual(rolled?.overdueItems?.last?.day, today)
         XCTAssertEqual(rolled?.streak, 4)
+        XCTAssertEqual(rolled?.streakBefore, 4)
         XCTAssertEqual(rolled?.bestStreak, 4)
-        XCTAssertEqual(rolled?.todayClosed, false)
+        // Сделанная заранее не закрывает новый день.
+        XCTAssertEqual(rolled?.isTodayClosed, false)
+        XCTAssertEqual(rolled?.displayStreak, 4)
         XCTAssertEqual(rolled?.week, [true, true, true, true, true, false, false])
         XCTAssertNil(snapshot.rolled(to: calendar.date(byAdding: .day, value: 2, to: today)!, calendar: calendar))
     }
@@ -209,7 +265,7 @@ final class WidgetSnapshotTests: XCTestCase {
         let routine = WidgetSnapshot.Item(id: UUID(), title: "Зарядка", start: 8 * 60, duration: 15, isDone: false,
                                           colorHex: 0, isRoutine: true)
         let snapshot = WidgetSnapshot(day: today, items: [item("Не успел", start: nil), routine], streak: 4, overdue: 0,
-                                      backlog: 0, todayClosed: false)
+                                      backlog: 0, tomorrowItems: [], streakBefore: 4, doneElsewhere: 0)
         let rolled = snapshot.rolled(to: calendar.date(byAdding: .day, value: 1, to: today)!, calendar: calendar)
         XCTAssertEqual(rolled?.streak, 0)
         XCTAssertEqual(rolled?.items.count, 0)
@@ -220,10 +276,25 @@ final class WidgetSnapshotTests: XCTestCase {
     func testRolloverIntoMondayClearsWeek() {
         let calendar = utc
         let sunday = calendar.date(byAdding: .day, value: 2, to: calendar.startOfDay(for: day))!
-        let snapshot = WidgetSnapshot(day: sunday, items: [item("Сделал", start: nil, done: true)], streak: 6, overdue: 0,
-                                      backlog: 0, todayClosed: true, week: Array(repeating: true, count: 7))
+        var done = item("Сделал", start: nil, done: true)
+        done.doneToday = true
+        let snapshot = WidgetSnapshot(day: sunday, items: [done], streak: 6, overdue: 0, backlog: 0, tomorrowItems: [],
+                                      streakBefore: 5, doneElsewhere: 0, week: Array(repeating: true, count: 7))
         let monday = calendar.date(byAdding: .day, value: 1, to: sunday)!
         XCTAssertEqual(WidgetSnapshot.weekIndex(of: monday, calendar: calendar), 0)
         XCTAssertEqual(snapshot.rolled(to: monday, calendar: calendar)?.week, Array(repeating: false, count: 7))
+    }
+
+    func testRolledSnapshotDoesNotRollAgain() {
+        let calendar = utc
+        let today = calendar.startOfDay(for: day)
+        let snapshot = WidgetSnapshot(day: today, items: [], streak: 0, overdue: 0, backlog: 0,
+                                      tomorrowItems: [item("Завтра", start: nil)], streakBefore: 0, doneElsewhere: 0)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+        guard let rolled = snapshot.rolled(to: tomorrow, calendar: calendar) else { return XCTFail("должен перевернуться") }
+        // Послезавтра неизвестно — показывать нечего, а не «пустой день».
+        XCTAssertNil(rolled.rolled(to: calendar.date(byAdding: .day, value: 1, to: tomorrow)!, calendar: calendar))
+        // Снимок без завтрашнего дня (старой версии) тоже не переворачивается.
+        XCTAssertNil(WidgetSnapshot(day: today, items: [], streak: 0, overdue: 0, backlog: 0).rolled(to: tomorrow, calendar: calendar))
     }
 }

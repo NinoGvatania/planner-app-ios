@@ -11,16 +11,21 @@ enum WidgetBridge {
         let overdue = tasks
             .filter { $0.isOverdue(today: today) }
             .sorted { ($0.day ?? today, $0.start ?? 0) < ($1.day ?? today, $1.start ?? 0) }
+        let items = dayItems(tasks, on: today, today: today)
+        let doneTodayInItems = items.filter { $0.doneToday == true }.count
         let snapshot = WidgetSnapshot(
             day: today,
-            items: dayItems(tasks, on: today),
+            items: items,
             streak: streak.current,
             overdue: overdue.count,
             backlog: tasks.filter { $0.isInBacklog && !$0.isDone }.count,
-            overdueItems: overdue.prefix(12).map { item($0, withDay: true) },
-            // Хватит и на «что завтра», и на утро, если приложение не откроют до полуночи.
-            tomorrowItems: Array(dayItems(tasks, on: tomorrow).prefix(12)),
-            todayClosed: streak.todayClosed,
+            overdueItems: overdue.prefix(12).map { item($0, today: today, withDay: true) },
+            // Весь завтрашний день: после полуночи, пока приложение не открыли, он станет сегодняшним.
+            tomorrowItems: dayItems(tasks, on: tomorrow, today: today),
+            // Серия без сегодняшнего дня: виджет сам прибавит день, когда сегодня что-то сделано.
+            streakBefore: streak.todayClosed ? streak.current - 1 : streak.current,
+            // Сделанное сегодня не из списков снимка: задачи бэклога, других дней.
+            doneElsewhere: max(0, streak.todayDone - doneTodayInItems),
             bestStreak: streak.best,
             week: streak.week
         )
@@ -64,7 +69,7 @@ enum WidgetBridge {
     }
 
     /// Задачи дня: сначала с временем по порядку, потом без времени.
-    private static func dayItems(_ tasks: [PlannerTask], on day: Date) -> [WidgetSnapshot.Item] {
+    private static func dayItems(_ tasks: [PlannerTask], on day: Date, today: Date) -> [WidgetSnapshot.Item] {
         tasks
             .filter { $0.day == day }
             .sorted { a, b in
@@ -72,10 +77,10 @@ enum WidgetBridge {
                 if let sa = a.start, let sb = b.start, sa != sb { return sa < sb }
                 return a.createdAt < b.createdAt
             }
-            .map { item($0, withDay: false) }
+            .map { item($0, today: today, withDay: false) }
     }
 
-    private static func item(_ task: PlannerTask, withDay: Bool) -> WidgetSnapshot.Item {
+    private static func item(_ task: PlannerTask, today: Date, withDay: Bool) -> WidgetSnapshot.Item {
         WidgetSnapshot.Item(
             id: task.id,
             title: task.title,
@@ -84,7 +89,8 @@ enum WidgetBridge {
             isDone: task.isDone,
             colorHex: task.dotHex,
             day: withDay ? task.day : nil,
-            isRoutine: task.isRoutine
+            isRoutine: task.isRoutine,
+            doneToday: task.isDone && task.completedAt.map { DayMath.calendar.startOfDay(for: $0) == today } == true
         )
     }
 }

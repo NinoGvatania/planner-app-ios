@@ -17,9 +17,11 @@ public struct WidgetSnapshot: Codable, Sendable {
         public var day: Date?
         /// Копия рутины: несделанная не становится просроченной.
         public var isRoutine: Bool?
+        /// Сделана именно сегодня (а не раньше срока в прошлый день) — идёт в серию за сегодня.
+        public var doneToday: Bool?
 
         public init(id: UUID, title: String, start: Int?, duration: Int, isDone: Bool, colorHex: UInt32,
-                    day: Date? = nil, isRoutine: Bool? = nil) {
+                    day: Date? = nil, isRoutine: Bool? = nil, doneToday: Bool? = nil) {
             self.id = id
             self.title = title
             self.start = start
@@ -28,6 +30,7 @@ public struct WidgetSnapshot: Codable, Sendable {
             self.colorHex = colorHex
             self.day = day
             self.isRoutine = isRoutine
+            self.doneToday = doneToday
         }
     }
 
@@ -35,6 +38,7 @@ public struct WidgetSnapshot: Codable, Sendable {
     public var day: Date
     /// Задачи дня: сначала с временем по порядку, потом без времени.
     public var items: [Item]
+    /// Серия, как её посчитало приложение (с сегодняшним днём, если он закрыт).
     public var streak: Int
     public var overdue: Int
     public var backlog: Int
@@ -42,10 +46,13 @@ public struct WidgetSnapshot: Codable, Sendable {
     // Дальше — необязательные поля: снимок старой версии приложения тоже читается.
     /// Просроченные, старые первыми (не больше дюжины).
     public var overdueItems: [Item]?
-    /// Задачи завтра — что впереди, когда сегодня всё сделано, и план на утро, если приложение не открывали.
+    /// Все задачи завтра — что впереди, когда сегодня всё сделано, и весь план дня, если приложение
+    /// не открывали до полуночи. `nil` — завтра неизвестно (снимок уже перевернул виджет).
     public var tomorrowItems: [Item]?
-    /// Сегодня уже что-то сделано, и серия его учитывает.
-    public var todayClosed: Bool?
+    /// Серия до сегодняшнего дня, без него: сегодня что-то сделано — к ней прибавляется день.
+    public var streakBefore: Int?
+    /// Сколько сделано сегодня вне списков снимка (из бэклога, задачи других дней).
+    public var doneElsewhere: Int?
     /// Лучшая серия за всё время.
     public var bestStreak: Int?
     /// Понедельник…воскресенье недели снимка: был ли день «закрыт».
@@ -54,8 +61,8 @@ public struct WidgetSnapshot: Codable, Sendable {
     public var lastDone: WidgetAction?
 
     public init(day: Date, items: [Item], streak: Int, overdue: Int, backlog: Int, generatedAt: Date = Date(),
-                overdueItems: [Item]? = nil, tomorrowItems: [Item]? = nil, todayClosed: Bool? = nil,
-                bestStreak: Int? = nil, week: [Bool]? = nil, lastDone: WidgetAction? = nil) {
+                overdueItems: [Item]? = nil, tomorrowItems: [Item]? = nil, streakBefore: Int? = nil,
+                doneElsewhere: Int? = nil, bestStreak: Int? = nil, week: [Bool]? = nil, lastDone: WidgetAction? = nil) {
         self.day = day
         self.items = items
         self.streak = streak
@@ -64,7 +71,8 @@ public struct WidgetSnapshot: Codable, Sendable {
         self.generatedAt = generatedAt
         self.overdueItems = overdueItems
         self.tomorrowItems = tomorrowItems
-        self.todayClosed = todayClosed
+        self.streakBefore = streakBefore
+        self.doneElsewhere = doneElsewhere
         self.bestStreak = bestStreak
         self.week = week
         self.lastDone = lastDone
@@ -104,8 +112,8 @@ public struct WidgetSnapshot: Codable, Sendable {
         guard let other else { return false }
         return day == other.day && items == other.items && streak == other.streak
             && overdue == other.overdue && backlog == other.backlog && overdueItems == other.overdueItems
-            && tomorrowItems == other.tomorrowItems && todayClosed == other.todayClosed
-            && bestStreak == other.bestStreak && week == other.week && lastDone == other.lastDone
+            && tomorrowItems == other.tomorrowItems && streakBefore == other.streakBefore
+            && doneElsewhere == other.doneElsewhere && bestStreak == other.bestStreak && week == other.week && lastDone == other.lastDone
     }
 
     public var openCount: Int { items.filter { !$0.isDone }.count }
@@ -115,24 +123,27 @@ public struct WidgetSnapshot: Codable, Sendable {
     /// Просроченные, ещё не закрытые галочкой в виджете.
     public var openOverdue: [Item] { (overdueItems ?? []).filter { !$0.isDone } }
 
-    /// Сделано сегодня: задачи дня и просроченные, закрытые в виджете.
-    public var doneTodayCount: Int { doneCount + (overdueItems ?? []).filter(\.isDone).count }
+    /// Сделано сегодня: задачи, отмеченные именно сегодня (в приложении или галочкой в виджете), и сделанное
+    /// вне списков снимка. Сделанная раньше срока в прошлый день не считается.
+    public var doneTodayCount: Int {
+        (items + (overdueItems ?? [])).filter { $0.isDone && $0.doneToday == true }.count + (doneElsewhere ?? 0)
+    }
 
     /// Доля сделанного за день, 0…1.
     public var progress: Double { items.isEmpty ? 0 : Double(doneCount) / Double(items.count) }
 
-    /// Сегодня уже что-то сделано — в приложении или галочкой в виджете.
-    public var isTodayClosed: Bool { todayClosed == true || doneTodayCount > 0 }
+    /// Сегодня уже что-то сделано. Снимок старой версии (без `streakBefore`) — по галочкам дня.
+    public var isTodayClosed: Bool { streakBefore == nil ? doneCount > 0 : doneTodayCount > 0 }
 
-    /// Серия с галочками, поставленными в виджете: первая сделанная сегодня задача продлевает её на день.
-    public var displayStreak: Int { todayClosed == false && doneTodayCount > 0 ? streak + 1 : streak }
+    /// Серия с учётом галочек в виджете: сегодня что-то сделано — на день больше, сняли последнюю — меньше.
+    public var displayStreak: Int { streakBefore.map { $0 + (isTodayClosed ? 1 : 0) } ?? streak }
 
     /// С какого часа несделанный день подсвечивается: серия вот-вот погаснет.
     public static let atRiskHour = 18
 
     /// Вечер, сегодня ничего не сделано, а серия есть — погаснет в полночь.
     public func streakAtRisk(at minutes: Int) -> Bool {
-        !isTodayClosed && streak > 0 && minutes >= Self.atRiskHour * 60
+        !isTodayClosed && (streakBefore ?? streak) > 0 && minutes >= Self.atRiskHour * 60
     }
 
     /// Сколько секунд после галочки в виджете предлагать «Вернуть».
@@ -146,10 +157,10 @@ public struct WidgetSnapshot: Codable, Sendable {
         return (items + (overdueItems ?? [])).first { $0.id == id && $0.isDone }
     }
 
-    /// Неделя с сегодняшним днём, закрытым галочкой в виджете. Понедельник — первый.
+    /// Неделя, где сегодняшний день закрыт или открыт по галочкам в виджете. Понедельник — первый.
     public func displayWeek(calendar: Calendar = .current) -> [Bool]? {
         guard var week, week.count == 7 else { return nil }
-        if isTodayClosed { week[Self.weekIndex(of: day, calendar: calendar)] = true }
+        week[Self.weekIndex(of: day, calendar: calendar)] = isTodayClosed
         return week
     }
 
@@ -201,6 +212,22 @@ public struct WidgetSnapshot: Codable, Sendable {
             .map(\.element)
     }
 
+    /// До ближайшей задачи с временем дольше стольких минут — это свободное время.
+    public static let freeTimeThreshold = 60
+
+    /// Главная задача: первая в `agenda`. Но если ближайшая с временем ещё не скоро (дальше
+    /// `freeTimeThreshold`), а есть задачи без времени, — первая из них: свободное время до встречи
+    /// можно занять ею. Пусто — `nil`.
+    public func focus(at minutes: Int) -> Item? {
+        let agenda = agenda(at: minutes)
+        guard let first = agenda.first else { return nil }
+        if case .later(let wait) = timing(of: first, at: minutes), wait > Self.freeTimeThreshold,
+           let free = agenda.first(where: { $0.start == nil }) {
+            return free
+        }
+        return first
+    }
+
     /// Ближайшая задача с временем после `minutes` — до неё свободно.
     public func nextTimed(after minutes: Int) -> Item? {
         items.first { item in
@@ -233,9 +260,11 @@ public struct WidgetSnapshot: Codable, Sendable {
         if let index = copy.items.firstIndex(where: { $0.id == id }) {
             copy.items[index].isDone.toggle()
             done = copy.items[index].isDone
+            copy.items[index].doneToday = done
         } else if let index = copy.overdueItems?.firstIndex(where: { $0.id == id }), var item = copy.overdueItems?[index] {
             item.isDone.toggle()
             done = item.isDone
+            item.doneToday = done
             copy.overdueItems?[index] = item
             copy.overdue = max(0, copy.overdue + (done ? -1 : 1))
         } else {
@@ -256,7 +285,8 @@ public struct WidgetSnapshot: Codable, Sendable {
         }
         copy.items += moved
         copy.overdueItems = (overdueItems ?? []).filter(\.isDone)
-        copy.overdue = max(0, overdue - moved.count)
+        // Приложение перенесёт все просроченные, и те, что не влезли в список снимка.
+        copy.overdue = 0
         return copy
     }
 
@@ -298,29 +328,40 @@ public struct WidgetSnapshot: Codable, Sendable {
 
     /// Снимок, увиденный в день `day`. Свой день — как есть. Наступило завтра, а приложение ещё не
     /// открывали — завтрашние задачи становятся сегодняшними, несделанные вчерашние — просроченными,
-    /// серия живёт, только если вчера что-то сделано. Старше — `nil`: показывать нечего.
+    /// серия живёт, только если вчера что-то сделано. Старше или завтра неизвестно (снимок уже
+    /// переворачивался) — `nil`: показывать нечего.
     public func rolled(to day: Date, calendar: Calendar = .current) -> WidgetSnapshot? {
         let today = calendar.startOfDay(for: day)
         let own = calendar.startOfDay(for: self.day)
         if own == today { return self }
-        guard let next = calendar.date(byAdding: .day, value: 1, to: own), next == today else { return nil }
+        guard let next = calendar.date(byAdding: .day, value: 1, to: own), next == today,
+              let tomorrowItems
+        else { return nil }
         let leftOver = items.filter { !$0.isDone && $0.isRoutine != true }.map { item -> Item in
             var copy = item
             copy.day = own
             return copy
         }
+        // Сделанные раньше срока остаются сделанными, но в серию нового дня не идут.
+        let newItems = tomorrowItems.map { item -> Item in
+            var copy = item
+            copy.doneToday = false
+            return copy
+        }
+        let carried = isTodayClosed ? displayStreak : 0
         // Новая неделя начинается с чистых точек.
         let newWeek = Self.weekIndex(of: today, calendar: calendar) == 0
         return WidgetSnapshot(
             day: today,
-            items: tomorrowItems ?? [],
-            streak: isTodayClosed ? displayStreak : 0,
+            items: newItems,
+            streak: carried,
             overdue: overdue + leftOver.count,
             backlog: backlog,
             generatedAt: generatedAt,
             overdueItems: Array((openOverdue + leftOver).prefix(12)),
             tomorrowItems: nil,
-            todayClosed: false,
+            streakBefore: carried,
+            doneElsewhere: 0,
             bestStreak: bestStreak.map { max($0, displayStreak) },
             week: newWeek ? week.map { _ in Array(repeating: false, count: 7) } : displayWeek(calendar: calendar),
             lastDone: nil
