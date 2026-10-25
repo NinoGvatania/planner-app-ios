@@ -118,7 +118,7 @@ struct SmallTodayView: View {
         let label = lit ? "ДЕНЬ ЗАКРЫТ" : (state.atRisk ? "ОГОНЁК ГАСНЕТ" : "СДЕЛАНО ЗАРАНЕЕ")
         let labelColor = lit ? WidgetPalette.accent : (state.atRisk ? WidgetPalette.flame : WidgetPalette.caption)
         let note = lit ? (state.snapshot.isNewRecord ? "Рекорд!" : WidgetText.plural(streak, "день", "дня", "дней") + " подряд")
-            : "сделай одну сегодня"
+            : "сделай одну"
         let noteColor = (lit && state.snapshot.isNewRecord) || (!lit && state.atRisk) ? WidgetPalette.flame : WidgetPalette.caption
         return VStack(alignment: .leading, spacing: 0) {
             header(label, color: labelColor, state: state, flame: false)

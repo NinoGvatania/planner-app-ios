@@ -410,10 +410,14 @@ struct Celebration: View {
                 Text(lit ? "Всё сделано" : "Сделано заранее")
                     .font(.system(size: compact ? 17 : 22, weight: .bold))
                     .foregroundStyle(WidgetPalette.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                // На узких экранах (SE, mini) ужимается до 11 pt, но не режется.
                 Text(subtitle(streak: streak, lit: lit))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(lit || state.atRisk ? WidgetPalette.flame : WidgetPalette.caption)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 if !compact {
                     WeekDots(state: state)
                         .padding(.top, 2)
@@ -433,7 +437,7 @@ struct Celebration: View {
     }
 
     private func subtitle(streak: Int, lit: Bool) -> String {
-        guard lit else { return streak > 0 ? "Сделай одну сегодня — серия \(streak)" : "Сделай одну — начни серию" }
+        guard lit else { return streak > 0 ? "Сделай одну — серия \(streak)" : "Начни серию сегодня" }
         if state.snapshot.isNewRecord { return "Новый рекорд — " + WidgetText.days(streak) + "!" }
         return "\(state.snapshot.doneCount) из \(state.snapshot.items.count) · " + WidgetText.days(streak) + " подряд"
     }
