@@ -31,31 +31,30 @@ extension FocusHero {
             let label = ago <= WidgetSnapshot.justEndedWindow ? "ТОЛЬКО ЧТО" : "БЫЛО В " + ClockGrid.format(minutes: start)
             self = FocusHero(label: label, labelColor: WidgetPalette.caption, text: "Готово?",
                              valueColor: WidgetPalette.ask, meta: range, ask: true)
-        case .later(let minutes) where minutes <= 60:
+        case .later(let minutes) where minutes <= WidgetSnapshot.freeTimeThreshold:
             self = FocusHero(label: "ЧЕРЕЗ", labelColor: WidgetPalette.text, countdownTo: state.moment(start),
-                             valueColor: WidgetPalette.text,
-                             meta: "в " + ClockGrid.format(minutes: start) + " · " + WidgetText.duration(item.duration),
-                             caption: "до начала")
+                             valueColor: WidgetPalette.text, meta: range, caption: "до начала")
         case .later(let minutes):
             self = FocusHero(label: "ДАЛЬШЕ", labelColor: WidgetPalette.caption, text: ClockGrid.format(minutes: start),
-                             valueColor: WidgetPalette.text, meta: "через " + WidgetText.duration(minutes), caption: "начало")
+                             valueColor: WidgetPalette.text, meta: "через " + WidgetText.roughHours(minutes),
+                             caption: "начало")
         case .allDay:
             if state.atRisk {
                 self = FocusHero(label: "ОГОНЁК ГАСНЕТ", labelColor: WidgetPalette.flame, countdownTo: state.midnight,
-                                 valueColor: WidgetPalette.flame, meta: "сделай одну — и горит", caption: "до полуночи")
+                                 valueColor: WidgetPalette.flame, meta: "сделай одну", caption: "до полуночи")
             } else if let next = state.snapshot.nextTimed(after: state.minutes), let nextStart = next.start {
                 // До следующей задачи с временем свободно: вот чем его занять.
                 let time = ClockGrid.format(minutes: nextStart)
                 let soon = nextStart - state.minutes <= 180
                 self = FocusHero(label: "СВОБОДНО", labelColor: WidgetPalette.accent,
                                  countdownTo: soon ? state.moment(nextStart) : nil, text: "до " + time,
-                                 valueColor: WidgetPalette.accent, meta: soon ? "до " + time : "потом " + next.title,
+                                 valueColor: WidgetPalette.accent, meta: soon ? "до " + time : "потом в " + time,
                                  caption: "свободно")
             } else {
                 let others = state.agenda.filter { $0.start == nil && $0.id != item.id }.count
                 self = FocusHero(label: "БЕЗ ВРЕМЕНИ", labelColor: WidgetPalette.caption, text: "Весь день",
                                  valueColor: WidgetPalette.text,
-                                 meta: others > 0 ? "и ещё \(others) без времени" : "на сегодня")
+                                 meta: others > 0 ? "+\(others) без времени" : "на сегодня")
             }
         case .overdue(let day):
             self = FocusHero(label: "ПРОСРОЧЕНО", labelColor: WidgetPalette.overdue,
@@ -83,7 +82,7 @@ extension FocusHero {
                 .foregroundStyle(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-                .frame(width: width, alignment: leading ? .leading : .trailing)
+                .frame(maxWidth: width, alignment: leading ? .leading : .trailing)
                 .widgetAccentable()
         }
     }

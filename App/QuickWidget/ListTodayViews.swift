@@ -20,7 +20,6 @@ struct MediumTodayView: View {
                         TaskList(state: state, rows: state.rows(limit: 3), rowHeight: 26)
                         TaskList(state: state, rows: state.rows(limit: 2), rowHeight: 26)
                     }
-                    Spacer(minLength: 0)
                 } else if state.allDone {
                     doneBody(state)
                 } else {
@@ -34,19 +33,35 @@ struct MediumTodayView: View {
         }
     }
 
+    /// Всё сделано: огонёк и серия, под ними — просроченные или завтра, сколько влезет.
     private func doneBody(_ state: DayState) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        ViewThatFits(in: .vertical) {
+            doneBody(state, rows: 2)
+            doneBody(state, rows: 1)
+            doneBody(state, rows: 0)
+        }
+    }
+
+    private func doneBody(_ state: DayState, rows: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             Celebration(state: state, compact: true)
-            Spacer(minLength: 0)
-            if !state.overdue.isEmpty {
-                TaskList(state: state, rows: Array(state.overdue.prefix(2)), rowHeight: 26)
-            } else if !state.tomorrow.isEmpty {
-                TomorrowPreview(items: Array(state.tomorrow.prefix(2)))
+            if rows > 0 && !state.overdue.isEmpty {
+                TaskList(state: state, rows: Array(state.overdue.prefix(rows)), rowHeight: 26)
+            } else if rows > 0 && !state.tomorrow.isEmpty {
+                TomorrowPreview(items: Array(state.tomorrow.prefix(rows)))
             }
         }
     }
 
+    /// Пустой день: что можно сделать; бэклог и завтра — если влезают.
     private func emptyBody(_ state: DayState) -> some View {
+        ViewThatFits(in: .vertical) {
+            emptyBody(state, tomorrow: true)
+            emptyBody(state, tomorrow: false)
+        }
+    }
+
+    private func emptyBody(_ state: DayState, tomorrow: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("На сегодня пусто")
                 .font(.system(size: 17, weight: .bold))
@@ -59,11 +74,10 @@ struct MediumTodayView: View {
                     Text("В бэклоге \(state.snapshot.backlog) ›")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(WidgetPalette.accent)
-                        .frame(height: 30)
+                        .frame(height: 28)
                 }
             }
-            Spacer(minLength: 0)
-            if !state.tomorrow.isEmpty {
+            if tomorrow && !state.tomorrow.isEmpty {
                 TomorrowPreview(items: Array(state.tomorrow.prefix(1)))
             }
         }
@@ -326,7 +340,7 @@ struct NowCard: View {
         HStack(spacing: 10) {
             CheckRing(item: item, remaining: state.remaining(item), ask: hero.ask)
             VStack(alignment: .leading, spacing: 2) {
-                Text(hero.label + " · " + hero.meta)
+                Text(hero.label)
                     .font(.system(size: 11, weight: .bold))
                     .tracking(0.3)
                     .foregroundStyle(hero.labelColor)
@@ -338,6 +352,11 @@ struct NowCard: View {
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                Text(hero.meta)
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(WidgetPalette.caption)
+                    .lineLimit(1)
             }
             VStack(alignment: .trailing, spacing: 0) {
                 hero.value(from: state.date, width: 88, large: 24, small: 20, leading: false)

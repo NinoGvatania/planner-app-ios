@@ -69,9 +69,11 @@ struct SmallTodayView: View {
     /// Нижние строки: «Вернуть» после галочки, следующие задачи (сегодня, потом просроченные, потом
     /// завтра), вечером — «погаснет через…».
     private func bottom(_ state: DayState, skipping skipped: UUID?, slots: Int, riskShown: Bool) -> some View {
-        let undo = state.justDone
-        let risk = state.atRisk && !riskShown
-        let free = max(0, slots - (undo == nil ? 0 : 1) - (risk ? 1 : 0))
+        // Каждая строка занимает место: «вернуть» — первое, «погаснет» — последнее, задачи — что осталось.
+        let undo = slots >= 1 ? state.justDone : nil
+        let used = undo == nil ? 0 : 1
+        let risk = state.atRisk && !riskShown && slots - used >= 1
+        let free = max(0, slots - used - (risk ? 1 : 0))
         let next = (state.agenda + state.overdue).filter { $0.id != skipped }
         let shown = Array(next.prefix(free))
         let tomorrow = shown.isEmpty ? Array(state.tomorrow.prefix(free)) : []
@@ -133,6 +135,19 @@ struct SmallTodayView: View {
             }
             .frame(height: 46)
             .padding(.top, 4)
+            // Подпись и строки под ней: «вернуть» и завтра — сколько влезет.
+            ViewThatFits(in: .vertical) {
+                doneLower(state, slots: 2)
+                doneLower(state, slots: 1)
+                doneLower(state, slots: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .widgetURL(state.overdue.isEmpty ? DeepLink.today : DeepLink.overdue)
+    }
+
+    private func doneLower(_ state: DayState, slots: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             Text("Всё сделано · \(state.snapshot.doneCount) из \(state.snapshot.items.count)")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(WidgetPalette.text)
@@ -146,11 +161,9 @@ struct SmallTodayView: View {
                     .foregroundStyle(WidgetPalette.overdue)
                     .lineLimit(2)
             } else {
-                bottom(state, skipping: nil, slots: 2, riskShown: false)
+                bottom(state, skipping: nil, slots: slots, riskShown: false)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .widgetURL(state.overdue.isEmpty ? DeepLink.today : DeepLink.overdue)
     }
 
     // MARK: - Пустой день
@@ -175,16 +188,29 @@ struct SmallTodayView: View {
             }
             .frame(height: 46)
             .padding(.top, 4)
+            // Подсказка не режется: строки «вернуть» и завтра уступают ей место.
+            ViewThatFits(in: .vertical) {
+                emptyLower(state, slots: 2)
+                emptyLower(state, slots: 1)
+                emptyLower(state, slots: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .widgetURL(backlog > 0 ? DeepLink.backlog : DeepLink.add)
+    }
+
+    private func emptyLower(_ state: DayState, slots: Int) -> some View {
+        let backlog = state.snapshot.backlog
+        return VStack(alignment: .leading, spacing: 0) {
             Text(backlog > 0 ? "В бэклоге \(backlog) — возьми одну" : "Добавь первую задачу")
                 .font(.system(size: 12))
                 .foregroundStyle(WidgetPalette.caption)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
             Spacer(minLength: 4)
-            bottom(state, skipping: nil, slots: 2, riskShown: false)
+            bottom(state, skipping: nil, slots: slots, riskShown: false)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .widgetURL(backlog > 0 ? DeepLink.backlog : DeepLink.add)
     }
 
     private var noData: some View {
@@ -231,12 +257,14 @@ struct NextRow: View {
                 }
             }
             .frame(width: 6, height: 6)
+            // Время — в колонке 36 pt; дата просроченной («21 июн») шире — колонка растёт под неё.
             Text(time.text)
                 .font(.system(size: 12, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(time.color)
                 .lineLimit(1)
-                .frame(width: 36, alignment: .leading)
+                .fixedSize()
+                .frame(minWidth: 36, alignment: .leading)
             Text((tomorrow && first ? "завтра · " : "") + item.title)
                 .font(.system(size: 12))
                 .foregroundStyle(tomorrow ? WidgetPalette.muted : WidgetPalette.caption)

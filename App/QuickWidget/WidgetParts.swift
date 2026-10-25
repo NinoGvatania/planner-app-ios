@@ -71,8 +71,9 @@ struct DayState {
     /// Только что отмечена в виджете — можно вернуть.
     var justDone: WidgetSnapshot.Item? { snapshot.justDone(at: date) }
 
-    /// Главная задача: что делать сейчас или следующей; на пустой сегодня — самая старая просроченная.
-    var focus: WidgetSnapshot.Item? { agenda.first ?? (snapshot.items.isEmpty ? overdue.first : nil) }
+    /// Главная задача: что делать сейчас или следующей (в свободное время — задача без времени);
+    /// на пустой сегодня — самая старая просроченная.
+    var focus: WidgetSnapshot.Item? { snapshot.focus(at: minutes) ?? (snapshot.items.isEmpty ? overdue.first : nil) }
 
     func timing(_ item: WidgetSnapshot.Item) -> WidgetTiming { snapshot.timing(of: item, at: minutes) }
 
@@ -135,6 +136,12 @@ enum WidgetText {
 
     /// «25 мин», «1 ч 5 мин».
     static func duration(_ minutes: Int) -> String { ClockGrid.formatDuration(max(1, minutes)) }
+
+    /// Через сколько, коротко и с точностью до получаса: «2 ч», «2,5 ч».
+    static func roughHours(_ minutes: Int) -> String {
+        let halves = (minutes + 15) / 30
+        return halves % 2 == 0 ? "\(halves / 2) ч" : "\(halves / 2),5 ч"
+    }
 
     /// «Сб, 25 окт» или без месяца — «Сб, 25».
     static func dayTitle(_ date: Date, withMonth: Bool = true) -> String {
@@ -202,14 +209,14 @@ struct Countdown: View {
     var leading = false
 
     var body: some View {
-        // Таймер занимает всю данную ширину — рамка держит его на месте.
+        // Таймер занимает всю данную ширину — рамка держит его на месте (на узком экране — уже).
         Text(timerInterval: min(from, to)...to, countsDown: true)
             .font(font)
             .monospacedDigit()
             .foregroundStyle(color)
             .multilineTextAlignment(leading ? .leading : .trailing)
             .lineLimit(1)
-            .frame(width: width, alignment: leading ? .leading : .trailing)
+            .frame(maxWidth: width, alignment: leading ? .leading : .trailing)
     }
 }
 
@@ -385,7 +392,7 @@ struct UndoRow: View {
 
     var body: some View {
         // Эта галочка первой за день зажгла огонёк — сказать об этом.
-        let lit = state.snapshot.todayClosed == false && state.snapshot.doneTodayCount == 1
+        let lit = state.snapshot.doneTodayCount == 1
         Button(intent: ToggleTaskIntent(id: item.id)) {
             HStack(spacing: 4) {
                 Image(systemName: lit ? "flame.fill" : "checkmark")

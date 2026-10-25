@@ -28,6 +28,8 @@ struct PlannerScreen: View {
     /// место (над панелью или внутри неё) не меняется.
     @State private var toastPillHeight: CGFloat = 48
     @State private var selectedID: UUID?
+    /// Задача из ссылки виджета: выделить после смены вида (смена вида сбрасывает выделение).
+    @State private var pendingSelectionID: UUID?
     @State private var drag: DragState?
     @State private var zones: [String: CGRect] = [:]
     @State private var springTask: Task<Void, Never>?
@@ -386,8 +388,8 @@ struct PlannerScreen: View {
             let created = materializeRoutines()
             if !created.isEmpty { NotificationScheduler.sync(tasks + created) }
         }
-        .onChange(of: period) { _, _ in resetInteraction() }
-        .onChange(of: display) { _, _ in resetInteraction() }
+        // Один обработчик на период и режим: поменялись оба — выделение из ссылки не сбросится вторым.
+        .onChange(of: period.rawValue + "|" + display.rawValue) { _, _ in resetInteraction() }
         .fullScreenCover(isPresented: $showVoice) {
             VoiceInputSheet(onDone: addDrafts, vocabulary: voiceVocabulary)
         }
@@ -461,10 +463,12 @@ struct PlannerScreen: View {
             case "task":
                 guard let id, let task = tasks.first(where: { $0.id == id }) else { showToday(); return }
                 if let day = task.day {
+                    // Смена вида сбросит выделение — тогда задача выделится после неё.
+                    let switching = period != .day || display != .calendar
                     period = .day
                     display = .calendar
                     dayOffset = DayMath.offset(of: day)
-                    selectedID = task.id
+                    if switching { pendingSelectionID = task.id } else { selectedID = task.id }
                 } else {
                     withAnimation(.spring(duration: 0.3)) { drawerOpen = true }
                 }
@@ -483,9 +487,10 @@ struct PlannerScreen: View {
         scrollToNowRequest += 1
     }
 
-    /// Сменили период или режим: выделение и перенос сбрасываются.
+    /// Сменили период или режим: выделение и перенос сбрасываются (кроме задачи, открытой по ссылке).
     private func resetInteraction() {
-        selectedID = nil
+        selectedID = pendingSelectionID
+        pendingSelectionID = nil
         allDayExpandedDays = nil
         drag = nil
         springTask?.cancel()

@@ -180,7 +180,8 @@ extension WidgetSnapshot {
         return WidgetSnapshot(
             day: day,
             items: [
-                Item(id: UUID(), title: "Созвон с командой", start: current - 90, duration: 30, isDone: true, colorHex: 0xFF6159),
+                Item(id: UUID(), title: "Созвон с командой", start: current - 90, duration: 30, isDone: true, colorHex: 0xFF6159,
+                     doneToday: true),
                 Item(id: UUID(), title: "Написать отчёт", start: current, duration: 90, isDone: false, colorHex: 0xFFC53D),
                 Item(id: UUID(), title: "Купить запчасти", start: current + 120, duration: 45, isDone: false, colorHex: 0x5E9EFF),
                 Item(id: UUID(), title: "Тренировка", start: current + 240, duration: 60, isDone: false, colorHex: 0x5CCB6E),
@@ -195,7 +196,8 @@ extension WidgetSnapshot {
             tomorrowItems: [
                 Item(id: UUID(), title: "Стендап", start: 9 * 60, duration: 15, isDone: false, colorHex: 0x5E9EFF),
             ],
-            todayClosed: true,
+            streakBefore: 4,
+            doneElsewhere: 0,
             bestStreak: 9,
             week: [true, true, true, false, true, false, false]
         )
