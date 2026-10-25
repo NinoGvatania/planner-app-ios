@@ -36,7 +36,7 @@ struct TodayProvider: TimelineProvider {
 
     /// Записи на моменты, когда виджет меняется сам (`WidgetSnapshot.timelineDates`): каждая минута часа
     /// вперёд — кольцо и «через 2 ч», начала и концы задач, конец «Вернуть», вечер, полночь. Секунды
-    /// отсчётов тикают сами. Записи кончились — WidgetKit читает снимок заново.
+    /// отсчётов тикают сами. Через три часа (частые записи кончились) WidgetKit читает снимок заново.
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayEntry>) -> Void) {
         let now = Date()
         guard let snapshot = WidgetSnapshot.load() else {
@@ -47,7 +47,7 @@ struct TodayProvider: TimelineProvider {
         let entries = snapshot.timelineDates(from: now).map {
             TodayEntry(date: $0, snapshot: snapshot, size: context.displaySize)
         }
-        completion(Timeline(entries: entries, policy: .atEnd))
+        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(3 * 3600))))
     }
 }
 
