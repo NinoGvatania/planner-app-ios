@@ -354,9 +354,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Planner/Planner.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Planner-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Доступ к Календарю нужен, чтобы выгружать задачи событиями в свой календарь.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Микрофон нужен, чтобы надиктовывать задачи.";
@@ -386,9 +387,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Planner/Planner.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Planner-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Доступ к Календарю нужен, чтобы выгружать задачи событиями в свой календарь.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Микрофон нужен, чтобы надиктовывать задачи.";
@@ -416,7 +418,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = QuickWidget/QuickWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "QuickWidget-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";
@@ -441,7 +443,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = QuickWidget/QuickWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "QuickWidget-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Quick";

@@ -41,7 +41,14 @@
   `TaskBlockView`, `Tokens`.
 - `App/QuickWidget/` — расширение‑виджет «Сегодня» (своя цель `QuickWidget` в `project.pbxproj`, читает
   `WidgetSnapshot` из контейнера группы `group.com.ninogvatania.planner`; App Groups прописаны
-  в `Planner/Planner.entitlements` и `QuickWidget/QuickWidget.entitlements`).
+  в `Planner/Planner.entitlements` и `QuickWidget/QuickWidget.entitlements`). `TodayWidget` — конфигурация
+  (свои поля 14/12 pt, `contentMarginsDisabled`), таймлайн по `WidgetSnapshot.timelineDates`, фон с подсветкой;
+  `SmallTodayView`, `ListTodayViews` (средний, большой), `FocusHero` (подпись и время главной задачи),
+  `WidgetParts` (`DayState` — снимок на минуту записи, `CheckRing`, `CheckButton`, `Countdown` —
+  `Text(timerInterval:)` в рамке, иначе он занимает всю ширину), `ToggleTaskIntent` и
+  `MoveOverdueToTodayIntent` (меняют снимок и пишут `WidgetActions`). Приложение применяет очередь
+  в `WidgetBridge.applyPendingActions` (при запуске, возврате и по ссылке), ссылки `quick://…` разбирает
+  `PlannerScreen.openLink`, схема `quick` — в `App/Planner-Info.plist`.
 - `docs/NIGHT-REPORT.md` — что сделано за ночь, что не проверено, утренний чек-лист.
 - `CLAUDE.md` — правила проекта.
 
