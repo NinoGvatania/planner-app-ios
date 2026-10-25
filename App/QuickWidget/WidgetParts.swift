@@ -207,6 +207,8 @@ struct Countdown: View {
     var color: Color = WidgetPalette.accent
     var width: CGFloat = 52
     var leading = false
+    /// Насколько можно ужать крупный отсчёт на узком экране (мелкий — не ужимается: он и так 11–13 pt).
+    var minScale: CGFloat = 1
 
     var body: some View {
         // Таймер занимает всю данную ширину — рамка держит его на месте (на узком экране — уже).
@@ -216,6 +218,7 @@ struct Countdown: View {
             .foregroundStyle(color)
             .multilineTextAlignment(leading ? .leading : .trailing)
             .lineLimit(1)
+            .minimumScaleFactor(minScale)
             .frame(maxWidth: width, alignment: leading ? .leading : .trailing)
     }
 }

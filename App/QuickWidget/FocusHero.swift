@@ -72,8 +72,9 @@ extension FocusHero {
     func value(from date: Date, width: CGFloat, large: CGFloat, small: CGFloat, leading: Bool = true) -> some View {
         if let countdownTo {
             let size = countdownTo.timeIntervalSince(date) < 3600 ? large : small
+            // «5:59:59» на 24 pt шире колонки маленького экрана (SE, mini) — ужимается до 18 pt.
             Countdown(from: date, to: countdownTo, font: .system(size: size, weight: .bold, design: .rounded),
-                      color: valueColor, width: width, leading: leading)
+                      color: valueColor, width: width, leading: leading, minScale: 0.75)
                 .widgetAccentable()
         } else {
             Text(text)
