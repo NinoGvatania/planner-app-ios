@@ -367,16 +367,20 @@ struct PlannerScreen: View {
             rootSafeBottom = Self.windowSafeBottom
             SeedData.seedIfNeeded(in: context)
             SeedData.assignProjectColorsIfNeeded(in: context)
+            WidgetBridge.applyPendingActions(to: tasks)
             let created = materializeRoutines()
             NotificationScheduler.requestPermission()
             NotificationScheduler.sync(tasks + created)
         }
         .onChange(of: scenePhase) { _, phase in
-            // Вернулись в приложение (возможно, уже другой день): досоздать рутины, обновить напоминания.
+            // Вернулись в приложение (возможно, уже другой день): галочки из виджета, досоздать рутины,
+            // обновить напоминания.
             guard phase == .active else { return }
+            WidgetBridge.applyPendingActions(to: tasks)
             let created = materializeRoutines()
             NotificationScheduler.sync(tasks + created)
         }
+        .onOpenURL(perform: openLink)
         // Листаешь периоды вперёд — рутины появляются и там, а не только на ближайшей неделе.
         .onChange(of: currentRange.end) { _, _ in
             let created = materializeRoutines()
@@ -418,6 +422,65 @@ struct PlannerScreen: View {
         } message: { task in
             Text(whenText(task))
         }
+    }
+
+    /// Ссылки из виджета: quick://today, quick://add, quick://voice, quick://overdue, quick://streak,
+    /// quick://backlog, quick://task/<id> (последняя — и у событий, выгруженных в Календарь).
+    private func openLink(_ url: URL) {
+        guard url.scheme == "quick" else { return }
+        // Действия из виджета — до того, как открыть задачу или «Просрочено».
+        if WidgetBridge.applyPendingActions(to: tasks) { NotificationScheduler.sync(tasks) }
+        // Открытый лист или экран закрываем: поверх него новый не покажется.
+        let covered = showOverdue || showVoice || showAssistant || showProjects || showSettings || showStreak
+            || editingTask != nil || namingTask != nil
+        if let namingTask { finishNaming(namingTask, keep: true) }
+        showOverdue = false
+        showVoice = false
+        showAssistant = false
+        showProjects = false
+        showSettings = false
+        showStreak = false
+        editingTask = nil
+        resetInteraction()
+        let target = url.host ?? ""
+        let id = UUID(uuidString: url.lastPathComponent)
+        Task { @MainActor in
+            // Лист уезжает ~0,4 с; клавиатуре нужно, чтобы экран уже был на месте.
+            if covered || target == "add" { try? await Task.sleep(for: .milliseconds(covered ? 650 : 350)) }
+            switch target {
+            case "add":
+                inputFocused = true
+            case "voice":
+                if ClaudeSettings.isEnabled { showAssistant = true } else { showVoice = true }
+            case "overdue":
+                if overdueTasks.isEmpty { showToday() } else { showOverdue = true }
+            case "streak":
+                showStreak = true
+            case "backlog":
+                withAnimation(.spring(duration: 0.3)) { drawerOpen = true }
+            case "task":
+                guard let id, let task = tasks.first(where: { $0.id == id }) else { showToday(); return }
+                if let day = task.day {
+                    period = .day
+                    display = .calendar
+                    dayOffset = DayMath.offset(of: day)
+                    selectedID = task.id
+                } else {
+                    withAnimation(.spring(duration: 0.3)) { drawerOpen = true }
+                }
+                editingTask = task
+            default:
+                showToday()
+            }
+        }
+    }
+
+    /// Сегодня на сетке дня, прокрутка к «сейчас».
+    private func showToday() {
+        period = .day
+        display = .calendar
+        dayOffset = 0
+        scrollToNowRequest += 1
     }
 
     /// Сменили период или режим: выделение и перенос сбрасываются.
