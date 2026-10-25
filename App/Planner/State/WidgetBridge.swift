@@ -26,7 +26,10 @@ enum WidgetBridge {
             streakBefore: streak.todayClosed ? streak.current - 1 : streak.current,
             // Сделанное сегодня не из списков снимка: задачи бэклога, других дней.
             doneElsewhere: max(0, streak.todayDone - doneTodayInItems),
-            bestStreak: streak.best,
+            // Рекорд без сегодняшнего дня: снимут в виджете сегодняшнюю галочку — рекорд не останется завышенным.
+            bestStreak: Streak.compute(tasks.filter { task in
+                !(task.completedAt.map { DayMath.calendar.startOfDay(for: $0) == today } ?? false)
+            }, today: today).best,
             week: streak.week
         )
         guard !snapshot.hasSameContent(as: WidgetSnapshot.load()) else { return }

@@ -428,7 +428,7 @@ struct AtRiskRow: View {
         HStack(spacing: 4) {
             Image(systemName: "flame")
                 .font(.system(size: 11, weight: .bold))
-            Text(compact ? "погаснет" : "\(state.snapshot.streak) · погаснет через")
+            Text(compact ? "погаснет" : "\(state.snapshot.displayStreak) · погаснет через")
                 .lineLimit(1)
             Countdown(from: state.date, to: state.midnight, font: .system(size: 12, weight: .semibold),
                       color: WidgetPalette.flame, width: 54, leading: true)

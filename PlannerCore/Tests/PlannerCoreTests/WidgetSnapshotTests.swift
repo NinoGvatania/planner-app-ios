@@ -297,4 +297,21 @@ final class WidgetSnapshotTests: XCTestCase {
         // Снимок без завтрашнего дня (старой версии) тоже не переворачивается.
         XCTAssertNil(WidgetSnapshot(day: today, items: [], streak: 0, overdue: 0, backlog: 0).rolled(to: tomorrow, calendar: calendar))
     }
+
+    func testRecordCountsTodayOnlyWhileClosed() {
+        var done = item("Сделал", start: nil, done: true)
+        done.doneToday = true
+        let snapshot = WidgetSnapshot(day: day, items: [done], streak: 6, overdue: 0, backlog: 0,
+                                      streakBefore: 5, doneElsewhere: 0, bestStreak: 5)
+        XCTAssertEqual(snapshot.displayBest, 6)
+        XCTAssertTrue(snapshot.isNewRecord)
+        // Сняли единственную сегодняшнюю галочку — рекорд прежний.
+        let reopened = snapshot.toggling(done.id)
+        XCTAssertEqual(reopened.displayBest, 5)
+        XCTAssertFalse(reopened.isNewRecord)
+        // Повторить рекорд — ещё не новый рекорд.
+        let tie = WidgetSnapshot(day: day, items: [done], streak: 5, overdue: 0, backlog: 0,
+                                 streakBefore: 4, doneElsewhere: 0, bestStreak: 5)
+        XCTAssertFalse(tie.isNewRecord)
+    }
 }

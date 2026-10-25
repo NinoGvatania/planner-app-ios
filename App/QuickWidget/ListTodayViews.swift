@@ -174,7 +174,7 @@ struct LargeFooter: View {
                     .foregroundStyle(WidgetPalette.caption)
             } else {
                 WeekDots(state: state)
-                if let best = state.snapshot.bestStreak, best > 0 {
+                if let best = state.snapshot.displayBest, best > 0 {
                     Text("рекорд \(best)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(WidgetPalette.caption)
@@ -381,31 +381,38 @@ struct NowCard: View {
     }
 }
 
-/// «Всё сделано»: большой огонёк, сколько сделано и серия (в большом — с неделей).
+/// «Всё сделано»: большой огонёк, сколько сделано и серия (в большом — с неделей). Если всё сделано
+/// заранее, в прошлые дни, а сегодня ни одной галочки — огонёк не горит: серию ещё надо продлить.
 struct Celebration: View {
     let state: DayState
     let compact: Bool
 
     var body: some View {
         let streak = state.snapshot.displayStreak
-        let record = streak >= 3 && streak >= (state.snapshot.bestStreak ?? .max)
+        let lit = state.flameLit
         HStack(spacing: 12) {
             ZStack {
-                Circle().fill(WidgetPalette.flame.opacity(0.16))
-                Image(systemName: "flame.fill")
-                    .font(.system(size: compact ? 24 : 30, weight: .bold))
-                    .foregroundStyle(WidgetPalette.flameGradient)
-                    .widgetAccentable()
+                Circle().fill(lit ? WidgetPalette.flame.opacity(0.16) : WidgetPalette.track)
+                Group {
+                    if lit {
+                        Image(systemName: "flame.fill")
+                            .foregroundStyle(WidgetPalette.flameGradient)
+                    } else {
+                        Image(systemName: "flame")
+                            .foregroundStyle(state.atRisk ? WidgetPalette.flame : WidgetPalette.muted)
+                    }
+                }
+                .font(.system(size: compact ? 24 : 30, weight: .bold))
+                .widgetAccentable()
             }
             .frame(width: compact ? 46 : 56, height: compact ? 46 : 56)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Всё сделано")
+                Text(lit ? "Всё сделано" : "Сделано заранее")
                     .font(.system(size: compact ? 17 : 22, weight: .bold))
                     .foregroundStyle(WidgetPalette.text)
-                Text(record ? "Новый рекорд — " + WidgetText.days(streak) + "!"
-                     : "\(state.snapshot.doneCount) из \(state.snapshot.items.count) · " + WidgetText.days(streak) + " подряд")
+                Text(subtitle(streak: streak, lit: lit))
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(WidgetPalette.flame)
+                    .foregroundStyle(lit || state.atRisk ? WidgetPalette.flame : WidgetPalette.caption)
                     .lineLimit(1)
                 if !compact {
                     WeekDots(state: state)
@@ -418,9 +425,17 @@ struct Celebration: View {
         .background {
             if !compact {
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(LinearGradient(colors: [Color(hex: 0x3A2410), Color(hex: 0x1F2024)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .fill(lit ? AnyShapeStyle(LinearGradient(colors: [Color(hex: 0x3A2410), Color(hex: 0x1F2024)],
+                                                              startPoint: .topLeading, endPoint: .bottomTrailing))
+                              : AnyShapeStyle(WidgetPalette.card))
             }
         }
+    }
+
+    private func subtitle(streak: Int, lit: Bool) -> String {
+        guard lit else { return streak > 0 ? "Сделай одну сегодня — серия \(streak)" : "Сделай одну — начни серию" }
+        if state.snapshot.isNewRecord { return "Новый рекорд — " + WidgetText.days(streak) + "!" }
+        return "\(state.snapshot.doneCount) из \(state.snapshot.items.count) · " + WidgetText.days(streak) + " подряд"
     }
 }
 

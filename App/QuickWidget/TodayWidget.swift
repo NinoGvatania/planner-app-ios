@@ -107,7 +107,7 @@ struct RectangularTodayView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .lineLimit(2)
             } else if let state, state.allDone {
-                Label("Всё сделано", systemImage: "flame.fill")
+                Label(state.flameLit ? "Всё сделано" : "Сделано заранее", systemImage: state.flameLit ? "flame.fill" : "flame")
                     .font(.system(size: 14, weight: .semibold))
                     .widgetAccentable()
                 Text(state.tomorrow.first.map { "Завтра " + WidgetText.short($0) } ?? "Серия " + WidgetText.days(state.snapshot.displayStreak))
@@ -160,7 +160,8 @@ struct InlineTodayView: View {
         if let state, let item = state.focus {
             Label(WidgetText.short(item), systemImage: "bolt.fill")
         } else if let state, state.allDone {
-            Label("Всё сделано · серия \(state.snapshot.displayStreak)", systemImage: "flame.fill")
+            Label((state.flameLit ? "Всё сделано" : "Сделано заранее") + " · серия \(state.snapshot.displayStreak)",
+                  systemImage: state.flameLit ? "flame.fill" : "flame")
         } else {
             Label("Quick", systemImage: "bolt.fill")
         }

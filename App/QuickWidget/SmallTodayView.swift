@@ -29,7 +29,7 @@ struct SmallTodayView: View {
             header(hero.label, color: hero.labelColor, state: state)
             HStack(alignment: .center, spacing: 2) {
                 VStack(alignment: .leading, spacing: 0) {
-                    hero.value(from: state.date, width: 92, large: 28, small: 24)
+                    hero.value(from: state.date, width: 92, large: 28, small: 22)
                     Text(hero.meta)
                         .font(.system(size: 11, weight: .semibold))
                         .monospacedDigit()
@@ -110,25 +110,39 @@ struct SmallTodayView: View {
 
     // MARK: - Всё сделано
 
+    /// Всё сделано. Сегодня есть галочка — «ДЕНЬ ЗАКРЫТ» и горящий огонёк; всё сделано заранее, в прошлые
+    /// дни, — огонёк контуром: чтобы продлить серию, сегодня нужна хоть одна задача.
     private func doneView(_ state: DayState) -> some View {
         let streak = state.snapshot.displayStreak
-        let record = streak >= 3 && streak >= (state.snapshot.bestStreak ?? .max)
+        let lit = state.flameLit
+        let label = lit ? "ДЕНЬ ЗАКРЫТ" : (state.atRisk ? "ОГОНЁК ГАСНЕТ" : "СДЕЛАНО ЗАРАНЕЕ")
+        let labelColor = lit ? WidgetPalette.accent : (state.atRisk ? WidgetPalette.flame : WidgetPalette.caption)
+        let note = lit ? (state.snapshot.isNewRecord ? "Рекорд!" : WidgetText.plural(streak, "день", "дня", "дней") + " подряд")
+            : "сделай одну сегодня"
+        let noteColor = (lit && state.snapshot.isNewRecord) || (!lit && state.atRisk) ? WidgetPalette.flame : WidgetPalette.caption
         return VStack(alignment: .leading, spacing: 0) {
-            header("ДЕНЬ ЗАКРЫТ", color: WidgetPalette.accent, state: state, flame: false)
+            header(label, color: labelColor, state: state, flame: false)
             HStack(spacing: 8) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundStyle(WidgetPalette.flameGradient)
-                    .widgetAccentable()
+                Group {
+                    if lit {
+                        Image(systemName: "flame.fill")
+                            .foregroundStyle(WidgetPalette.flameGradient)
+                    } else {
+                        Image(systemName: "flame")
+                            .foregroundStyle(state.atRisk ? WidgetPalette.flame : WidgetPalette.muted)
+                    }
+                }
+                .font(.system(size: 32, weight: .bold))
+                .widgetAccentable()
                 VStack(alignment: .leading, spacing: 0) {
                     Text("\(streak)")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(WidgetPalette.flame)
+                        .foregroundStyle(lit ? WidgetPalette.flame : WidgetPalette.caption)
                         .contentTransition(.numericText(value: Double(streak)))
-                    Text(record ? "Рекорд!" : WidgetText.plural(streak, "день", "дня", "дней") + " подряд")
+                    Text(note)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(record ? WidgetPalette.flame : WidgetPalette.caption)
+                        .foregroundStyle(noteColor)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -143,7 +157,14 @@ struct SmallTodayView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .widgetURL(state.overdue.isEmpty ? DeepLink.today : DeepLink.overdue)
+        .widgetURL(doneURL(state))
+    }
+
+    /// Куда ведёт тап: есть просроченные — к ним; день ещё не закрыт — взять задачу из бэклога или добавить.
+    private func doneURL(_ state: DayState) -> URL {
+        if !state.overdue.isEmpty { return DeepLink.overdue }
+        if state.flameLit { return DeepLink.today }
+        return state.snapshot.backlog > 0 ? DeepLink.backlog : DeepLink.add
     }
 
     private func doneLower(_ state: DayState, slots: Int) -> some View {
@@ -192,6 +213,8 @@ struct SmallTodayView: View {
             ViewThatFits(in: .vertical) {
                 emptyLower(state, slots: 2)
                 emptyLower(state, slots: 1)
+                // На самом маленьком экране «вернуть» важнее подсказки.
+                emptyLower(state, slots: 1, hint: false)
                 emptyLower(state, slots: 0)
             }
         }
@@ -199,15 +222,17 @@ struct SmallTodayView: View {
         .widgetURL(backlog > 0 ? DeepLink.backlog : DeepLink.add)
     }
 
-    private func emptyLower(_ state: DayState, slots: Int) -> some View {
+    private func emptyLower(_ state: DayState, slots: Int, hint: Bool = true) -> some View {
         let backlog = state.snapshot.backlog
         return VStack(alignment: .leading, spacing: 0) {
-            Text(backlog > 0 ? "В бэклоге \(backlog) — возьми одну" : "Добавь первую задачу")
-                .font(.system(size: 12))
-                .foregroundStyle(WidgetPalette.caption)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
+            if hint {
+                Text(backlog > 0 ? "В бэклоге \(backlog) — возьми одну" : "Добавь первую задачу")
+                    .font(.system(size: 12))
+                    .foregroundStyle(WidgetPalette.caption)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
             Spacer(minLength: 4)
             bottom(state, skipping: nil, slots: slots, riskShown: false)
         }

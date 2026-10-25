@@ -53,7 +53,7 @@ public struct WidgetSnapshot: Codable, Sendable {
     public var streakBefore: Int?
     /// Сколько сделано сегодня вне списков снимка (из бэклога, задачи других дней).
     public var doneElsewhere: Int?
-    /// Лучшая серия за всё время.
+    /// Лучшая серия за всё время, без сегодняшнего дня (сегодня — в `displayBest`).
     public var bestStreak: Int?
     /// Понедельник…воскресенье недели снимка: был ли день «закрыт».
     public var week: [Bool]?
@@ -137,6 +137,12 @@ public struct WidgetSnapshot: Codable, Sendable {
 
     /// Серия с учётом галочек в виджете: сегодня что-то сделано — на день больше, сняли последнюю — меньше.
     public var displayStreak: Int { streakBefore.map { $0 + (isTodayClosed ? 1 : 0) } ?? streak }
+
+    /// Лучшая серия с учётом сегодняшнего дня и галочек в виджете.
+    public var displayBest: Int? { bestStreak.map { max($0, displayStreak) } }
+
+    /// Серия с сегодняшним днём — новый рекорд (не меньше трёх дней).
+    public var isNewRecord: Bool { displayStreak >= 3 && displayStreak > (bestStreak ?? .max) }
 
     /// С какого часа несделанный день подсвечивается: серия вот-вот погаснет.
     public static let atRiskHour = 18
@@ -362,7 +368,7 @@ public struct WidgetSnapshot: Codable, Sendable {
             tomorrowItems: nil,
             streakBefore: carried,
             doneElsewhere: 0,
-            bestStreak: bestStreak.map { max($0, displayStreak) },
+            bestStreak: displayBest,
             week: newWeek ? week.map { _ in Array(repeating: false, count: 7) } : displayWeek(calendar: calendar),
             lastDone: nil
         )
